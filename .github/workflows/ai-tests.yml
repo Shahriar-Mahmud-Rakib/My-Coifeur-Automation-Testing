@@ -1,0 +1,1563 @@
+name: Mehad Autonomous AI Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      ai_model:
+        description: "Ollama model (e.g. qwen2.5-coder:7b)"
+        required: false
+        default: "qwen2.5-coder:7b"
+      base_url:
+        description: "Target URL to test"
+        required: false
+        default: "https://dev.mehadedu.com/en"
+      browser_use:
+        description: "Enable browser-use agent? (true/false)"
+        required: false
+        default: "false"
+      enable_vision:
+        description: "Enable vision-LLM UI review (QA-22)? (true/false) — pulls 5GB model"
+        required: false
+        default: "false"
+
+# Opt into Node.js 24 to suppress Node.js 20 deprecation warnings
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Grant write access to contents so the gh-pages deploy can push.
+# Default GITHUB_TOKEN only has Contents:read which causes
+#   "remote: Permission to ... denied to github-actions[bot]" → git exit 128.
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  autonomous-ai-test:
+    name: AI Test Agent v5
+    runs-on: ubuntu-latest
+    timeout-minutes: 90   # 7b model needs more time
+
+    env:
+      BASE_URL:              ${{ github.event.inputs.base_url  || 'https://dev.mehadedu.com/en' }}
+      AI_MODEL:              ${{ github.event.inputs.ai_model  || 'qwen2.5-coder:7b' }}
+      AI_TIMEOUT:            "120"      # seconds per ollama.chat() call before giving up (7b needs more time)
+      MAX_FIX_RETRIES:       "1"        # self-heal rounds in CI (reduce from 3 to save time)
+      BROWSER_USE_ENABLED:   "true"
+      BROWSER_USE_MODEL:     "qwen2.5-coder:7b"
+      BROWSER_USE_TIMEOUT:   "90"
+      OPENAI_API_KEY:        "ollama"
+      OPENAI_BASE_URL:       "http://localhost:11434/v1"
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # ── 2. Python 3.12 ──────────────────────────────────────────────────────
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # ── 3. Python dependencies ────────────────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt || true
+          # Install core deps directly in case requirements.txt has new entries
+          pip install ollama playwright pytest pytest-playwright pytest-json-report \
+                      pytest-html pytest-timeout Jinja2
+          # Install langchain backends
+          pip install langchain-openai langchain-ollama
+          # Install browser-use (optional — skip if install fails)
+          pip install browser-use langchain-openai langchain-ollama || echo "⚠️ browser-use install skipped"
+
+      # ── 4. Playwright + Chromium ──────────────────────────────────────────
+      - name: Install Playwright and Chromium
+        run: playwright install chromium --with-deps
+
+      # ── 5. Ollama ─────────────────────────────────────────────────────────
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.ai/install.sh | sh
+
+      # ── 6. Cache Ollama models ────────────────────────────────────────────
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-v6-qwen2.5-coder-7b-1.5b-tinyllama
+
+      # ── 7. Start Ollama service ────────────────────────────────────────────
+      - name: Start Ollama service
+        run: |
+          ollama serve &
+          echo "Waiting for Ollama..."
+          for i in $(seq 1 30); do
+            curl -s http://localhost:11434/api/tags > /dev/null 2>&1 && echo "✅ Ollama ready" && break
+            sleep 2
+          done
+
+      # ── 8. Pull AI models (7b primary + fallback chain) ──────────────────
+      # Primary: qwen2.5-coder:7b (4.7 GB — best quality).
+      # The 15-model chain in agent.py handles any subset that is available.
+      - name: Pull AI models
+        timeout-minutes: 20
+        run: |
+          echo "=== Primary: qwen2.5-coder:7b (4.7 GB — best quality) ==="
+          timeout 900 ollama pull qwen2.5-coder:7b || echo "⚠️  qwen2.5-coder:7b unavailable — falling back"
+
+          echo ""
+          echo "=== Fallback: qwen2.5-coder:1.5b (986 MB) ==="
+          timeout 300 ollama pull qwen2.5-coder:1.5b || echo "⚠️ qwen2.5-coder:1.5b unavailable"
+
+          echo ""
+          echo "=== Fallback: tinyllama:1.1b (637 MB) ==="
+          timeout 180 ollama pull tinyllama:1.1b || echo "⚠️ tinyllama unavailable"
+
+          echo ""
+          echo "=== Fallback: qwen2.5:0.5b (395 MB) ==="
+          timeout 120 ollama pull qwen2.5:0.5b || echo "⚠️ qwen2.5:0.5b unavailable"
+
+          echo ""
+          echo "=== Available models ==="
+          ollama list
+
+      # ── 9. Verify all modules ─────────────────────────────────────────────
+      - name: Verify setup
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python --version
+          echo ""
+          echo "=== Core packages ==="
+          python -c "import ollama;     print('✅ ollama')"
+          python -c "import playwright; print('✅ playwright')"
+          python -c "import pytest;     print('✅ pytest')"
+          echo ""
+          echo "=== AI Engine modules ==="
+          python -c "from ai_engine.spec_parser    import parse;                  print('✅ spec_parser')"
+          python -c "from ai_engine.spec_compiler  import compile_spec;           print('✅ spec_compiler')"
+          python -c "from ai_engine.test_generator import generate_all;           print('✅ test_generator')"
+          python -c "from ai_engine.test_validator import validate_code;          print('✅ test_validator')"
+          python -c "from ai_engine.evidence       import enrich_bug;             print('✅ evidence')"
+          python -c "from ai_engine.bug_builder    import build_from_json_report; print('✅ bug_builder')"
+          python -c "from ai_engine.gap_checker    import detect_gaps;            print('✅ gap_checker')"
+          python -c "from ai_engine.memory         import load;                   print('✅ memory')"
+          python -c "from ai_engine.reporter       import generate_report;        print('✅ reporter')"
+          python -c "from ai_engine.agent          import AutonomousTestAgent;    print('✅ agent')"
+          python -c "from ai_engine.browser_agent  import discover_page;          print('✅ browser_agent')" || echo "⚠️ browser_agent (optional)"
+          python -c "from payloads import XSS, SQLI, BOUNDARY; print(f'✅ payloads  XSS:{len(XSS)} SQLi:{len(SQLI)} Boundary:{len(BOUNDARY)}')"
+          echo ""
+          echo "=== browser-use status ==="
+          python -c "import browser_use; print('✅ browser-use installed')" || echo "⚠️ browser-use not installed (optional)"
+          python -c "import langchain_ollama; print('✅ langchain-ollama installed')" || echo "⚠️ langchain-ollama not installed (optional)"
+          echo ""
+          echo "✅ All critical modules verified"
+
+      # ── 10. Prepare directories ───────────────────────────────────────────
+      - name: Prepare directories
+        run: mkdir -p tests reports reports/screenshots reports/evidence
+
+      # ── 11. Compile specs to JSON ─────────────────────────────────────────
+      - name: Compile Specs → JSON
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "=== Compiling spec files (skipping TEMPLATE.md) ==="
+          for f in specs/*.md; do
+            base=$(basename "$f")
+            # Skip template and any doc files
+            case "$base" in TEMPLATE.md|README.md|EXAMPLE.md|_*) echo "  ⏭  Skipping $base"; continue ;; esac
+            echo -n "  Compiling $base... "
+            python ai_engine/spec_compiler.py "$f" && echo "✅" || echo "⚠️ failed"
+          done
+          echo ""
+          echo "=== Compiled specs ==="
+          ls -la specs/*.spec.json 2>/dev/null || echo "No compiled specs"
+
+      # ── 12. Run the AI agent ──────────────────────────────────────────────
+      - name: Run AI Test Agent
+        timeout-minutes: 75   # hard limit on agent execution
+        env:
+          BASE_URL:              ${{ env.BASE_URL }}
+          AI_MODEL:              ${{ env.AI_MODEL }}
+          AI_TIMEOUT:            ${{ env.AI_TIMEOUT }}
+          MAX_FIX_RETRIES:       ${{ env.MAX_FIX_RETRIES }}
+          TEST_PASSWORD:         ${{ secrets.TEST_PASSWORD }}
+          BROWSER_USE_ENABLED:   ${{ env.BROWSER_USE_ENABLED }}
+          BROWSER_USE_MODEL:     ${{ env.BROWSER_USE_MODEL }}
+          BROWSER_USE_TIMEOUT:   ${{ env.BROWSER_USE_TIMEOUT }}
+          OPENAI_API_KEY:        ${{ env.OPENAI_API_KEY }}
+          OPENAI_BASE_URL:       ${{ env.OPENAI_BASE_URL }}
+          PYTHONPATH:            ${{ github.workspace }}
+          PYTHONUNBUFFERED:      "1"
+        run: |
+          echo "=== Autonomous AI Test Agent v5 ==="
+          echo "  Target:       $BASE_URL"
+          echo "  AI Model:     $AI_MODEL"
+          echo "  AI Timeout:   ${AI_TIMEOUT}s per call"
+          echo "  Test Types:   22 (smoke → security)"
+          echo "  Model Chain:  14 models (all free, auto-fallback)"
+          echo "  Browser-use:  true (langchain-openai → Ollama /v1)"
+          echo "  Template:     always-works fallback with compiled selectors"
+          echo ""
+          python -u ai_engine/agent.py
+        continue-on-error: true  # Always upload reports even on test failures
+
+      # ── 13. Generate CI summary ────────────────────────────────────────────
+      - name: Generate detailed CI summary
+        if: always()
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "=== Generating CI summary ==="
+          python scripts/generate_ci_summary.py || echo "⚠️ CI summary generation failed"
+          ls -la reports/ 2>/dev/null || echo "No reports directory"
+
+      # ── 13b. Generate HTML bug report (always — even on timeout/cancel) ────
+      - name: Generate HTML bug report
+        if: always()
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "=== Generating HTML bug report from partial/complete data ==="
+          python scripts/generate_html_report.py || echo "⚠️ HTML report generation failed"
+          ls -la reports/bug-report.html 2>/dev/null && echo "✅ bug-report.html ready" || echo "❌ bug-report.html missing"
+
+      # ── 14. Upload HTML bug report ────────────────────────────────────────
+      - name: Upload HTML bug report
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: bug-report-${{ github.run_number }}
+          path: reports/bug-report.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ── 15. Upload screenshots ────────────────────────────────────────────
+      # Only created on test failures, so when the AI agent has 0 failures
+      # there is nothing to upload — `ignore` keeps the log clean.
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: reports/screenshots/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── 16a. Belt-and-braces: nuke any raw playwright temp videos that
+      # snuck past conftest's session_finish cleanup. The artifact uploader
+      # otherwise hits ENOENT mid-zip when these files vanish between
+      # the file-list scan and the byte-read (TOCTOU race seen in run #43).
+      - name: Clean Playwright raw videos before artifact upload
+        if: always()
+        run: |
+          find reports/videos -name 'page@*.webm' -delete 2>/dev/null || true
+          find reports -name 'page@*.webm' -delete 2>/dev/null || true
+          echo "Remaining videos:"
+          ls -la reports/videos/ 2>/dev/null | head -10 || true
+
+      # ── 16. Upload full reports + evidence ────────────────────────────────
+      - name: Upload full reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: full-reports-${{ github.run_number }}
+          path: |
+            reports/
+            !reports/videos/page@*.webm
+          retention-days: 30
+
+      # NOTE: GitHub Pages deploy moved to the consolidate-reports job (end of
+      # workflow) so the FULL master report from all 9 agents is what goes
+      # live, instead of just this job's partial AI-only report.
+
+      # ── 17. Upload generated tests ────────────────────────────────────────
+      - name: Upload generated tests
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: ai-generated-tests-${{ github.run_number }}
+          path: tests/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ── 18. Upload compiled specs ─────────────────────────────────────────
+      - name: Upload compiled specs
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: compiled-specs-${{ github.run_number }}
+          path: specs/*.spec.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      # ── 19. Write GitHub Step Summary ────────────────────────────────────
+      # Shows: model used, test data per type, pass/fail per test, bug tickets, gaps.
+      - name: Write job summary
+        if: always()
+        run: |
+          # ── Header (always written) ─────────────────────────────────────
+          cat >> "$GITHUB_STEP_SUMMARY" << 'HEADER'
+          ## 🤖 Mehad Autonomous AI Test Agent — v5
+          HEADER
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "| Field | Value |"                                                                    >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|"                                                                    >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🤖 AI Model | \`${{ env.AI_MODEL }}\` (Ollama — free/local, no API key) |"        >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔗 Target | \`${{ env.BASE_URL }}\` |"                                             >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🚀 Trigger | ${{ github.event_name }} |"                                            >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🔢 Run | #${{ github.run_number }} |"                                              >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🏗️ Architecture | v5 — 22 Types · 14-Model Chain · Template Fallback |"            >> "$GITHUB_STEP_SUMMARY"
+          echo "| 🌐 Browser-use | true (langchain-openai → Ollama /v1, no API key) |"             >> "$GITHUB_STEP_SUMMARY"
+          echo "| 📦 Ref | \`${{ github.ref_name }}\` @ \`${{ github.sha }}\` |"                    >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # ── Quick results from summary.json ────────────────────────────
+          if [ -f reports/summary.json ]; then
+            echo "### 📊 Results" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            python3 -c "
+          import json
+          d = json.load(open('reports/summary.json'))
+          p = d.get('total_passed', 0)
+          f = d.get('total_failed', 0)
+          t = d.get('total_tests', 0)
+          b = d.get('total_bugs', 0)
+          rate = f'{p/t*100:.0f}%' if t else 'N/A'
+          partial = ' *(partial — job cancelled)*' if d.get('partial') else ''
+          print(f'| ✅ Passed | {p}{partial} |')
+          print(f'| ❌ Failed | {f} |')
+          print(f'| 📊 Total Tests | {t} |')
+          print(f'| 📈 Pass Rate | {rate} |')
+          print(f'| 🐛 Bug Tickets | {b} |')
+          specs = d.get('specs_tested', [])
+          print(f'| 📄 Specs Tested | {len(specs)}: {\", \".join(specs) if specs else \"none\"} |')
+          print(f'| 🕐 Timestamp | {d.get(\"timestamp\", \"N/A\")} |')
+          " >> "$GITHUB_STEP_SUMMARY" || echo "| Error | Could not parse summary.json |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "> ⚠️ No summary.json found — agent may have been cancelled before completing." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # ── Detailed per-type breakdown from ci_summary.md ─────────────
+          if [ -f reports/ci_summary.md ]; then
+            echo "---" >> "$GITHUB_STEP_SUMMARY"
+            cat reports/ci_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # ── Raw test data log (collapsible) ────────────────────────────
+          if [ -f reports/test_data_log.json ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "<details>" >> "$GITHUB_STEP_SUMMARY"
+            echo "<summary>📋 Test Data Log (what data AI used per test type)</summary>" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            python3 -c "
+          import json
+          d = json.load(open('reports/test_data_log.json'))
+          out = {'model_used': d.get('model_used'), 'timestamp': d.get('timestamp'), 'specs': {}}
+          for spec, sdata in d.get('specs', {}).items():
+              out['specs'][spec] = {'total_tests': sdata.get('total_tests'), 'types': {}}
+              for t, tdata in sdata.get('types', {}).items():
+                  out['specs'][spec]['types'][t] = {
+                      'test_count': tdata.get('test_count', 0),
+                      'test_data_sample': tdata.get('test_data', [])[:3],
+                      'tests': tdata.get('tests', [])[:5],
+                  }
+          print(json.dumps(out, indent=2))
+          " >> "$GITHUB_STEP_SUMMARY" || cat reports/test_data_log.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "</details>" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "📥 **Artifacts:** \`bug-report-${{ github.run_number }}\` · \`ai-generated-tests-${{ github.run_number }}\` · \`full-reports-${{ github.run_number }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 1 — Functional + Edge Cases (QA-01, QA-02)
+  # Runs the hand-crafted Playwright tests — no Ollama / AI required.
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-1-functional:
+    name: "QA Agent 1 — Functional & Edge Cases"
+    runs-on: ubuntu-latest
+    # Bumped 30→45 after run #50 hit the limit on slow-staging runs.
+    # QA-01 + QA-02 typically finish in ~6-10 min; the buffer absorbs
+    # OTP rate-limit retries that occasionally drag tests out.
+    timeout-minutes: 45
+
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+
+      - name: Verify syntax of test file
+        run: python3 -m py_compile tests/test_qa_comprehensive.py && echo "✅ Syntax OK"
+
+      - name: Run QA-01 Functional Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA01Functional \
+            --timeout=60 --timeout-method=thread \
+            --tb=short -v -p no:warnings \
+            --html=reports/qa01-functional.html --self-contained-html \
+            --json-report --json-report-file=reports/qa01_functional_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa01-functional.txt
+
+      - name: Run QA-02 Edge Case Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA02EdgeCaseBoundary \
+            --timeout=60 --timeout-method=thread \
+            --tb=short -v -p no:warnings \
+            --html=reports/qa02-edge.html --self-contained-html \
+            --json-report --json-report-file=reports/qa02_edge_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa02-edge.txt
+
+      - name: Write QA Agent 1 Summary
+        if: always()
+        run: |
+          echo "## QA Agent 1 — Functional & Edge Cases" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Group | Report |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-01 Functional | qa01-functional.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-02 Edge Cases | qa02-edge.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for f in reports/qa01-functional.txt reports/qa02-edge.txt; do
+            [ -f "$f" ] && grep -E "^(PASSED|FAILED|ERROR|tests ran|passed|failed)" "$f" | tail -5 >> "$GITHUB_STEP_SUMMARY" || true
+          done
+
+      - name: Upload QA Agent 1 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-1-reports-${{ github.run_number }}
+          path: |
+            reports/qa01*
+            reports/qa02*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 2 — Security + Performance + Hallucination (QA-03, QA-04, QA-05)
+  # Runs the hand-crafted Playwright tests — no Ollama / AI required.
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-2-security-perf:
+    name: "QA Agent 2 — Security, Performance & Hallucination"
+    runs-on: ubuntu-latest
+    # Bumped 30→45 — XSS+SQLi payload files expanded to 50 each, so QA-03
+    # parametrize count went from ~59 to ~172 tests. ~9 min for QA-03 alone
+    # on staging; QA-04 + QA-05 push total to ~17 min.
+    timeout-minutes: 45
+
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+
+      - name: Run QA-03 Security Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA03Security \
+            --timeout=60 --timeout-method=thread \
+            --tb=short -v -p no:warnings \
+            --html=reports/qa03-security.html --self-contained-html \
+            --json-report --json-report-file=reports/qa03_security_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa03-security.txt
+
+      - name: Run QA-04 Performance Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA04PerformanceAndJSErrors \
+            --timeout=60 --timeout-method=thread \
+            --tb=short -v -p no:warnings \
+            --html=reports/qa04-performance.html --self-contained-html \
+            --json-report --json-report-file=reports/qa04_performance_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa04-performance.txt
+
+      - name: Run QA-05 Hallucination & Data Integrity Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA05HallucinationDataIntegrity \
+            --timeout=60 --timeout-method=thread \
+            --tb=short -v -p no:warnings \
+            --html=reports/qa05-hallucination.html --self-contained-html \
+            --json-report --json-report-file=reports/qa05_hallucination_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa05-hallucination.txt
+
+      - name: Write QA Agent 2 Summary
+        if: always()
+        run: |
+          echo "## QA Agent 2 — Security, Performance & Hallucination" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Group | Report |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-03 Security | qa03-security.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-04 Performance | qa04-performance.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-05 Hallucination | qa05-hallucination.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for f in reports/qa03-security.txt reports/qa04-performance.txt reports/qa05-hallucination.txt; do
+            [ -f "$f" ] && grep -E "^(PASSED|FAILED|ERROR|tests ran|passed|failed)" "$f" | tail -5 >> "$GITHUB_STEP_SUMMARY" || true
+          done
+
+      - name: Upload QA Agent 2 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-2-reports-${{ github.run_number }}
+          path: |
+            reports/qa03*
+            reports/qa04*
+            reports/qa05*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 3 — API & Network + Accessibility (QA-06, QA-07)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-3-api-accessibility:
+    name: "QA Agent 3 — API/Network & Accessibility"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-06 API & Network Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA06APIAndNetwork \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa06-api.html --self-contained-html \
+            --json-report --json-report-file=reports/qa06_api_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa06-api.txt
+      - name: Run QA-07 Accessibility Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA07Accessibility \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa07-accessibility.html --self-contained-html \
+            --json-report --json-report-file=reports/qa07_accessibility_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa07-accessibility.txt
+      - name: Upload QA Agent 3 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-3-reports-${{ github.run_number }}
+          path: |
+            reports/qa0[67]*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 4 — QA-01 & QA-02 JSON results (for consolidation)
+  # Re-runs agents 1 with JSON output for consolidation pipeline
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-4-mobile:
+    name: "QA Agent 4 — Mobile & Cross-Viewport"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-08 Mobile & Viewport Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA08MobileAndViewport \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa08-mobile.html --self-contained-html \
+            --json-report --json-report-file=reports/qa08_mobile_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa08-mobile.txt
+      - name: Upload QA Agent 4 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-4-reports-${{ github.run_number }}
+          path: |
+            reports/qa08*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 5 — LangGraph agent (generates + runs AI tests via graph)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-5-langgraph:
+    name: "QA Agent 5 — LangGraph AI Orchestration"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BASE_URL:            ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+      AI_MODEL:            ${{ github.event.inputs.ai_model || 'qwen2.5-coder:7b' }}
+      AI_TIMEOUT:          "90"
+      MAX_FIX_RETRIES:     "1"
+      OPENAI_API_KEY:      "ollama"
+      OPENAI_BASE_URL:     "http://localhost:11434/v1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt || true
+          pip install langgraph langchain-core langchain-ollama playwright \
+                      pytest pytest-playwright pytest-json-report pytest-html pytest-timeout Jinja2
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.ai/install.sh | sh
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-models-v6-qwen2.5-coder-7b-1.5b-tinyllama
+      - name: Start Ollama + pull models
+        run: |
+          ollama serve &
+          for i in $(seq 1 20); do curl -s http://localhost:11434/api/tags > /dev/null 2>&1 && break; sleep 2; done
+          timeout 600 ollama pull qwen2.5-coder:7b  || echo "7b unavailable"
+          timeout 180 ollama pull qwen2.5-coder:1.5b || echo "1.5b unavailable"
+          timeout 120 ollama pull tinyllama:1.1b     || echo "tinyllama unavailable"
+          ollama list
+      - name: Prepare directories
+        run: mkdir -p tests reports reports/screenshots reports/evidence cache/tests
+      - name: Run LangGraph Agent
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          echo "=== LangGraph Agent — spec → generate → cache → run ==="
+          python -u -m ai_engine.langgraph_agent || true
+      - name: Upload LangGraph Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-5-langgraph-${{ github.run_number }}
+          path: |
+            reports/
+            cache/tests/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 6 — SEO & Meta Tags  (QA-09)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-6-seo-meta:
+    name: "QA Agent 6 — SEO & Meta"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-09 SEO & Meta Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA09SEOAndMeta \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa09-seo.html --self-contained-html \
+            --json-report --json-report-file=reports/qa09_seo_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa09-seo.txt
+      - name: Write QA Agent 6 Summary
+        if: always()
+        run: |
+          echo "## QA Agent 6 — SEO & Meta" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Group | Report |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-09 SEO & Meta | qa09-seo.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          [ -f reports/qa09-seo.txt ] && grep -E "^(PASSED|FAILED|ERROR|tests ran|passed|failed)" reports/qa09-seo.txt | tail -5 >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload QA Agent 6 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-6-reports-${{ github.run_number }}
+          path: |
+            reports/qa09*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 7 — i18n / Localization & RTL  (QA-10)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-7-i18n-rtl:
+    name: "QA Agent 7 — i18n & RTL"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-10 i18n & RTL Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA10I18nAndRTL \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa10-i18n.html --self-contained-html \
+            --json-report --json-report-file=reports/qa10_i18n_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa10-i18n.txt
+      - name: Write QA Agent 7 Summary
+        if: always()
+        run: |
+          echo "## QA Agent 7 — i18n & RTL" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Group | Report |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| QA-10 i18n & RTL | qa10-i18n.html |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          [ -f reports/qa10-i18n.txt ] && grep -E "^(PASSED|FAILED|ERROR|tests ran|passed|failed)" reports/qa10-i18n.txt | tail -5 >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Upload QA Agent 7 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-7-reports-${{ github.run_number }}
+          path: |
+            reports/qa10*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 1 — DETECTION POWER-UPS
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 8 — Visual Regression (QA-11)
+  # Pixel-diffs each page against tests/visual_baselines/. First run after a
+  # baseline change (or first ever) creates the baseline and passes; later
+  # runs fail if pixel diff > 3% of total pixels.
+  qa-agent-8-visual-regression:
+    name: "QA Agent 8 — Visual Regression"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { lfs: true }   # baselines stored under tests/visual_baselines/
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence reports/visual-actuals reports/visual-diffs
+      - name: Run QA-11 Visual Regression Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA11VisualRegression \
+            --timeout=120 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa11-visual.html --self-contained-html \
+            --json-report --json-report-file=reports/qa11_visual_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa11-visual.txt
+      - name: Commit refreshed baselines (only on main, only when baselines change)
+        if: github.ref == 'refs/heads/main'
+        continue-on-error: true
+        run: |
+          if git diff --quiet tests/visual_baselines/; then
+            echo "No baseline changes."
+          else
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git config user.name  "github-actions[bot]"
+            git add tests/visual_baselines/
+            git commit -m "ci: auto-create visual baselines (run #${{ github.run_number }}) [skip ci]" || true
+            git push origin HEAD:main || echo "push skipped (token lacks permission)"
+          fi
+      - name: Upload QA Agent 8 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-8-reports-${{ github.run_number }}
+          path: |
+            reports/qa11*
+            reports/visual-actuals/
+            reports/visual-diffs/
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # QA AGENT 9 — JS Error Sweeper (QA-12)
+  # Visits every key page and fails on any uncaught pageerror or
+  # console.error (filtered for known dev-mode noise). Catches silent JS
+  # bugs that don't break individual functional tests.
+  qa-agent-9-js-errors:
+    name: "QA Agent 9 — JS Error Sweeper"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-12 JS Error Sweeper Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA12JSErrorSweeper \
+            --timeout=90 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa12-js-errors.html --self-contained-html \
+            --json-report --json-report-file=reports/qa12_js_errors_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa12-js-errors.txt
+      - name: Upload QA Agent 9 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-9-reports-${{ github.run_number }}
+          path: |
+            reports/qa12*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 2 — SECURITY DEPTH
+  # Three new agents that probe HTTP-layer security beyond XSS/SQLi.
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 10 — Security Headers (QA-13)
+  qa-agent-10-security-headers:
+    name: "QA Agent 10 — Security Headers"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-13 Security Headers Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA13SecurityHeaders \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa13-security-headers.html --self-contained-html \
+            --json-report --json-report-file=reports/qa13_security_headers_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa13-security-headers.txt
+      - name: Upload QA Agent 10 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-10-reports-${{ github.run_number }}
+          path: |
+            reports/qa13*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # QA AGENT 11 — Cookie Security (QA-14)
+  qa-agent-11-cookie-security:
+    name: "QA Agent 11 — Cookie Security"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-14 Cookie Security Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA14CookieSecurity \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa14-cookies.html --self-contained-html \
+            --json-report --json-report-file=reports/qa14_cookies_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa14-cookies.txt
+      - name: Upload QA Agent 11 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-11-reports-${{ github.run_number }}
+          path: |
+            reports/qa14*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # QA AGENT 12 — OWASP Surface (QA-15)
+  qa-agent-12-owasp-surface:
+    name: "QA Agent 12 — OWASP Surface"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-15 OWASP Surface Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA15OWASPSurface \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa15-owasp.html --self-contained-html \
+            --json-report --json-report-file=reports/qa15_owasp_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa15-owasp.txt
+      - name: Upload QA Agent 12 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-12-reports-${{ github.run_number }}
+          path: |
+            reports/qa15*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 3 — PERFORMANCE & RELIABILITY
+  # ─────────────────────────────────────────────────────────────────────────────
+  # QA AGENT 13 — Lighthouse / Core Web Vitals (QA-16)
+  qa-agent-13-lighthouse:
+    name: "QA Agent 13 — Core Web Vitals"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-16 Core Web Vitals Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA16Lighthouse \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa16-lighthouse.html --self-contained-html \
+            --json-report --json-report-file=reports/qa16_lighthouse_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa16-lighthouse.txt
+      - name: Upload QA Agent 13 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-13-reports-${{ github.run_number }}
+          path: |
+            reports/qa16*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # QA AGENT 14 — Memory Leak Detection (QA-17)
+  qa-agent-14-memory-leak:
+    name: "QA Agent 14 — Memory Leak"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-17 Memory Leak Tests
+        continue-on-error: true
+        # --enable-precise-memory-info exposes performance.memory in headless Chromium
+        env:
+          PWDEBUG_BROWSER_ARGS: "--enable-precise-memory-info"
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA17MemoryLeak \
+            --timeout=120 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa17-memory.html --self-contained-html \
+            --json-report --json-report-file=reports/qa17_memory_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa17-memory.txt
+      - name: Upload QA Agent 14 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-14-reports-${{ github.run_number }}
+          path: |
+            reports/qa17*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # QA AGENT 15 — Network Resilience (QA-18)
+  qa-agent-15-network-resilience:
+    name: "QA Agent 15 — Network Resilience"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-18 Network Resilience Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA18NetworkResilience \
+            --timeout=90 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa18-network.html --self-contained-html \
+            --json-report --json-report-file=reports/qa18_network_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa18-network.txt
+      - name: Upload QA Agent 15 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-15-reports-${{ github.run_number }}
+          path: |
+            reports/qa18*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 4.2 — AUTONOMOUS EXPLORATORY TESTING (QA-19)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-16-exploratory:
+    name: "QA Agent 16 — Autonomous Explorer"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASE_URL:                ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+      BROWSER_USE_ENABLED:     "false"   # set true once Ollama is hooked
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-19 Autonomous Exploratory Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} BROWSER_USE_ENABLED=${{ env.BROWSER_USE_ENABLED }} \
+            python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA19AutonomousExploratory \
+            --timeout=180 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa19-exploratory.html --self-contained-html \
+            --json-report --json-report-file=reports/qa19_exploratory_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa19-exploratory.txt
+      - name: Upload QA Agent 16 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-16-reports-${{ github.run_number }}
+          path: |
+            reports/qa19*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 4.3 — PROPERTY-BASED FUZZING (QA-20)
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-17-fuzzing:
+    name: "QA Agent 17 — Property-Based Fuzz"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence
+      - name: Run QA-20 Property-Based Fuzzing Tests
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA20PropertyBasedFuzzing \
+            --timeout=60 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa20-fuzzing.html --self-contained-html \
+            --json-report --json-report-file=reports/qa20_fuzzing_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa20-fuzzing.txt
+      - name: Upload QA Agent 17 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-17-reports-${{ github.run_number }}
+          path: |
+            reports/qa20*
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # PHASE 4.5 — VISION-LLM UI VALIDATION (QA-22)
+  # Off by default in CI (5GB model + warm-up). Set ENABLE_VISION_QA=true
+  # in workflow_dispatch to run a real vision review.
+  # ─────────────────────────────────────────────────────────────────────────────
+  qa-agent-18-vision-ui:
+    name: "QA Agent 18 — Vision-LLM UI Review"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BASE_URL:           ${{ github.event.inputs.base_url || 'https://dev.mehadedu.com/en' }}
+      ENABLE_VISION_QA:   ${{ github.event.inputs.enable_vision || 'false' }}
+      VISION_MODEL:       "qwen2-vl:7b"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install dependencies
+        run: pip install playwright pytest pytest-playwright pytest-html pytest-timeout pytest-json-report Pillow ollama
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+      - name: Install Ollama (only if vision QA enabled)
+        if: env.ENABLE_VISION_QA == 'true'
+        run: curl -fsSL https://ollama.ai/install.sh | sh
+      - name: Pull vision model (only if enabled)
+        if: env.ENABLE_VISION_QA == 'true'
+        timeout-minutes: 15
+        run: |
+          ollama serve &
+          for i in $(seq 1 20); do curl -s http://localhost:11434/api/tags > /dev/null 2>&1 && break; sleep 2; done
+          timeout 600 ollama pull ${VISION_MODEL} || echo "vision model unavailable"
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/screenshots reports/evidence reports/vision-shots
+      - name: Run QA-22 Vision UI Review
+        continue-on-error: true
+        run: |
+          BASE_URL=${{ env.BASE_URL }} \
+            ENABLE_VISION_QA=${{ env.ENABLE_VISION_QA }} \
+            VISION_MODEL=${{ env.VISION_MODEL }} \
+            python3 -m pytest \
+            tests/test_qa_comprehensive.py::TestQA22VisionUIValidation \
+            --timeout=180 --timeout-method=thread --tb=short -v -p no:warnings \
+            --html=reports/qa22-vision.html --self-contained-html \
+            --json-report --json-report-file=reports/qa22_vision_results.json \
+            -p no:cacheprovider 2>&1 | tee reports/qa22-vision.txt
+      - name: Upload QA Agent 18 Reports
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: qa-agent-18-reports-${{ github.run_number }}
+          path: |
+            reports/qa22*
+            reports/vision-shots/
+            reports/screenshots/
+            reports/videos/
+            !reports/videos/page@*.webm
+            reports/evidence/
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # CONSOLIDATE — Merges ALL QA agent results into one master bug-report.html
+  # Runs after every other job completes (pass or fail).
+  # ─────────────────────────────────────────────────────────────────────────────
+  consolidate-reports:
+    name: "Consolidate — Master Bug Report"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: always()
+    needs:
+      - autonomous-ai-test
+      - qa-agent-1-functional
+      - qa-agent-2-security-perf
+      - qa-agent-3-api-accessibility
+      - qa-agent-4-mobile
+      - qa-agent-5-langgraph
+      - qa-agent-6-seo-meta
+      - qa-agent-7-i18n-rtl
+      - qa-agent-8-visual-regression
+      - qa-agent-9-js-errors
+      - qa-agent-10-security-headers
+      - qa-agent-11-cookie-security
+      - qa-agent-12-owasp-surface
+      - qa-agent-13-lighthouse
+      - qa-agent-14-memory-leak
+      - qa-agent-15-network-resilience
+      - qa-agent-16-exploratory
+      - qa-agent-17-fuzzing
+      - qa-agent-18-vision-ui
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - name: Install report dependencies
+        run: pip install Jinja2 pytest-json-report
+      - name: Prepare reports directory
+        run: mkdir -p reports reports/qa_agent_1 reports/qa_agent_2 reports/qa_agent_3 reports/qa_agent_4 reports/qa_agent_5
+
+      # Download artifacts from every QA agent
+      - name: Download AI Agent artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: full-reports-${{ github.run_number }}
+          path: |
+            reports/
+            !reports/videos/page@*.webm
+      - name: Download QA Agent 1 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-1-reports-${{ github.run_number }}
+          path: reports/agent-1/
+      - name: Download QA Agent 2 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-2-reports-${{ github.run_number }}
+          path: reports/agent-2/
+      - name: Download QA Agent 3 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-3-reports-${{ github.run_number }}
+          path: reports/agent-3/
+      - name: Download QA Agent 4 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-4-reports-${{ github.run_number }}
+          path: reports/agent-4/
+      - name: Download QA Agent 5 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-5-langgraph-${{ github.run_number }}
+          path: reports/agent-5/
+      - name: Download QA Agent 6 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-6-reports-${{ github.run_number }}
+          path: reports/agent-6/
+      - name: Download QA Agent 7 artifacts
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-7-reports-${{ github.run_number }}
+          path: reports/agent-7/
+      - name: Download QA Agent 8 artifacts (visual regression)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-8-reports-${{ github.run_number }}
+          path: reports/agent-8/
+      - name: Download QA Agent 9 artifacts (JS error sweeper)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-9-reports-${{ github.run_number }}
+          path: reports/agent-9/
+      - name: Download QA Agent 10 artifacts (security headers)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-10-reports-${{ github.run_number }}
+          path: reports/agent-10/
+      - name: Download QA Agent 11 artifacts (cookie security)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-11-reports-${{ github.run_number }}
+          path: reports/agent-11/
+      - name: Download QA Agent 12 artifacts (OWASP surface)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-12-reports-${{ github.run_number }}
+          path: reports/agent-12/
+      - name: Download QA Agent 13 artifacts (lighthouse)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-13-reports-${{ github.run_number }}
+          path: reports/agent-13/
+      - name: Download QA Agent 14 artifacts (memory leak)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-14-reports-${{ github.run_number }}
+          path: reports/agent-14/
+      - name: Download QA Agent 15 artifacts (network resilience)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-15-reports-${{ github.run_number }}
+          path: reports/agent-15/
+      - name: Download QA Agent 16 artifacts (autonomous exploratory)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-16-reports-${{ github.run_number }}
+          path: reports/agent-16/
+      - name: Download QA Agent 17 artifacts (property-based fuzz)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-17-reports-${{ github.run_number }}
+          path: reports/agent-17/
+      - name: Download QA Agent 18 artifacts (vision UI review)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: qa-agent-18-reports-${{ github.run_number }}
+          path: reports/agent-18/
+      - name: Download screenshots (for embedding in master report)
+        uses: actions/download-artifact@v5
+        continue-on-error: true
+        with:
+          name: screenshots-${{ github.run_number }}
+          path: reports/screenshots/
+
+      - name: Run consolidation script
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          echo "=== Consolidating all QA agent results ==="
+          ls -la reports/ | head -30 || true
+          python scripts/consolidate_reports.py
+
+      - name: Write consolidated summary
+        if: always()
+        run: |
+          echo "## 🎯 Consolidated QA Report — All Agents" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f reports/consolidated_summary.json ]; then
+            python3 -c "
+          import json
+          d = json.load(open('reports/consolidated_summary.json'))
+          print(f'| ✅ Total Passed | {d.get(\"total_passed\", 0)} |')
+          print(f'| ❌ Total Failed | {d.get(\"total_failed\", 0)} |')
+          print(f'| 📊 Total Tests  | {d.get(\"total_tests\",  0)} |')
+          print(f'| 📈 Pass Rate    | {d.get(\"pass_rate\",    \"N/A\")} |')
+          print(f'| 🐛 Total Bugs   | {d.get(\"total_bugs\",   0)} |')
+          print(f'| 📄 Specs/Groups | {len(d.get(\"sources\", []))} |')
+          " >> "$GITHUB_STEP_SUMMARY" || true
+          fi
+
+      - name: Upload consolidated master report
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: master-bug-report-${{ github.run_number }}
+          path: |
+            reports/bug-report.html
+            reports/consolidated_summary.json
+            reports/trends.json
+            reports/agent-*.html
+          retention-days: 60
+          if-no-files-found: warn
+
+      # ── Build the GitHub Pages site (master + agents + history) ─────────
+      # Lives at https://mejbaur-markopolo.github.io/Markopolo-Automation-Testing/
+      # Pages source must be set to "gh-pages" branch (one-time setting).
+      - name: Build GitHub Pages site
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA:        ${{ github.sha }}
+          GITHUB_RUN_ID:     ${{ github.run_id }}
+        run: |
+          python scripts/build_pages_site.py
+          echo "=== gh-pages-site contents ==="
+          find gh-pages-site -type f -name '*.html' | head -30
+
+      - name: Deploy to GitHub Pages (gh-pages branch)
+        if: always() && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token:   ${{ secrets.GITHUB_TOKEN }}
+          publish_dir:    ./gh-pages-site
+          publish_branch: gh-pages
+          keep_files:     true   # preserve previous runs' history/run-N.html
+          user_name:      "github-actions[bot]"
+          user_email:     "github-actions[bot]@users.noreply.github.com"
+          commit_message: "ci: publish QA report (run #${{ github.run_number }})"

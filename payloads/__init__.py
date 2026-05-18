@@ -8,7 +8,7 @@ def load(name: str) -> list[str]:
     f = _DIR / f"{name}.txt"
     if not f.exists():
         return []
-    return [l.strip() for l in f.read_text().splitlines()
+    return [l.strip() for l in f.read_text(encoding="utf-8").splitlines()
             if l.strip() and not l.startswith("#")]
 
 XSS      = load("xss")

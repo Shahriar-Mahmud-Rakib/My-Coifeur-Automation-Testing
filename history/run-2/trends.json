@@ -1,0 +1,100 @@
+{
+  "runs": [
+    {
+      "run_number": 2,
+      "run_url": "https://github.com/Shahriar-Mahmud-Rakib/My-Coifeur-Automation-Testing/actions/runs/26047933777",
+      "timestamp": "2026-05-18T17:40:20.540187Z",
+      "passed": 327,
+      "failed": 88,
+      "total": 415,
+      "bugs": 88,
+      "pass_rate": "78.8%"
+    }
+  ],
+  "fingerprints": {
+    "ba3a1c4e62f0": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "61bdca766f4e": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "770fb9e7e1f4": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "a7bfd7d38d07": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "a7f290e2b3be": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "c0c999130a00": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "046ef2e7920e": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "9252bcf5ad3d": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "3fb581456488": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "01cd6b2d1b53": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "d89a19962de5": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    },
+    "de41860e2619": {
+      "first_seen_run": 2,
+      "last_seen_run": 2,
+      "runs_seen": [
+        2
+      ]
+    }
+  }
+}

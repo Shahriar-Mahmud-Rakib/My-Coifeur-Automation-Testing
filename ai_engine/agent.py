@@ -84,11 +84,35 @@ except ImportError:
     _BROWSER_USE_AVAILABLE = False
 
 # ── Real-time output ──────────────────────────────────────────────────────────
+import sys
+try:
+    if sys.stdout.encoding != 'utf-8':
+        sys.stdout.reconfigure(encoding='utf-8')
+    if sys.stderr.encoding != 'utf-8':
+        sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 _real_print = builtins.print
 def print(*a, **kw):
-    kw.setdefault("flush", True); _real_print(*a, **kw)
+    kw.setdefault("flush", True)
+    try:
+        _real_print(*a, **kw)
+    except UnicodeEncodeError:
+        clean_args = []
+        for arg in a:
+            if isinstance(arg, str):
+                clean_args.append(arg.encode('ascii', 'replace').decode('ascii'))
+            else:
+                clean_args.append(arg)
+        _real_print(*clean_args, **kw)
+
 def log(msg=""):
-    _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    try:
+        _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    except UnicodeEncodeError:
+        clean_msg = str(msg).encode('ascii', 'replace').decode('ascii')
+        _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {clean_msg}", flush=True)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_URL         = os.getenv("BASE_URL",  "https://beta-stg.fagun.ai")

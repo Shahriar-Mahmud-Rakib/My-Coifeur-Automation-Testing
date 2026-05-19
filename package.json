@@ -1,0 +1,12 @@
+{
+  "name": "my-coifeur-automation-testing",
+  "version": "1.0.0",
+  "description": "My Coifeur Automation Testing Scripts",
+  "scripts": {
+    "admin": "py run.py --ai",
+    "test": "py run.py --all",
+    "demo": "py run.py --demo"
+  },
+  "author": "",
+  "license": "ISC"
+}

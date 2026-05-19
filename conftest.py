@@ -447,7 +447,7 @@ def pytest_collection_finish(session):
     n = len(session.items)
     print(f"[COLLECT] {n} test(s) found", flush=True)
     for item in session.items:
-        print(f"  → {item.nodeid}", flush=True)
+        print(f"  -> {item.nodeid}", flush=True)
 
 
 def pytest_internalerror(excrepr, excinfo):

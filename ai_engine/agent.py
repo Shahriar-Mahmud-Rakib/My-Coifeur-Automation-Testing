@@ -114,22 +114,22 @@ _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
 # Smaller models get shorter timeouts so they fail fast and free the chain.
 MODEL_CHAIN = [
     # Tier 1 — large code-specialist models (best quality)
-    ("qwen2.5-coder:7b",      4096, 0.05, 120),
-    (AI_MODEL,                4096, 0.05, 120),   # whatever AI_MODEL is set to
-    ("deepseek-coder:6.7b",   4096, 0.05, 120),
-    ("codellama:7b",          3500, 0.08, 120),
+    ("qwen2.5-coder:7b",      4096, 0.05, 300),
+    (AI_MODEL,                4096, 0.05, 300),   # whatever AI_MODEL is set to
+    ("deepseek-coder:6.7b",   4096, 0.05, 300),
+    ("codellama:7b",          3500, 0.08, 300),
     # Tier 2 — large general models (good fallback for non-code tasks)
-    ("qwen2.5:7b",            3500, 0.08, 120),
-    ("mistral:7b",            3000, 0.08, 120),
-    ("phi4:3.8b",             3000, 0.08,  90),
+    ("qwen2.5:7b",            3500, 0.08, 300),
+    ("mistral:7b",            3000, 0.08, 300),
+    ("phi4:3.8b",             3000, 0.08, 300),
     # Tier 3 — small code models (fast + decent code quality)
-    ("qwen2.5-coder:3b",      3000, 0.10,  75),
-    ("deepseek-coder:1.3b",   2500, 0.10,  60),
-    ("qwen2.5-coder:1.5b",    2500, 0.12,  60),
+    ("qwen2.5-coder:3b",      3000, 0.10, 300),
+    ("deepseek-coder:1.3b",   2500, 0.10, 300),
+    ("qwen2.5-coder:1.5b",    2500, 0.12, 300),
     # Tier 4 — small general models (only used if all coders unavailable)
-    ("llama3.2:3b",           3000, 0.10,  75),
-    ("phi3.5",                3000, 0.10,  75),
-    ("gemma2:2b",             2500, 0.10,  60),
+    ("llama3.2:3b",           3000, 0.10, 300),
+    ("phi3.5",                3000, 0.10, 300),
+    ("gemma2:2b",             2500, 0.10, 300),
     # NOTE: removed tinyllama:1.1b, qwen2.5:0.5b, llama3.2:1b — these
     # produce broken Python ~95% of the time, wasting model-chain slots.
 ]
@@ -247,20 +247,40 @@ _TIMEOUT_COUNTS: dict[str, int] = {}   # per-session timeout counter per model
 def _chat_with_timeout(model: str, messages: list, options: dict,
                        timeout: int = AI_TIMEOUT,
                        fmt: str | None = None) -> dict | None:
-    """Call ollama.chat with a hard timeout. `fmt='json'` requests JSON output.
+    """Call Ollama API directly via HTTP with a hard socket timeout.
     Returns None on timeout (caller decides whether to retry/blacklist)."""
-    kwargs = dict(model=model, messages=messages, options=options)
+    import urllib.request
+    import json
+    import socket
+
+    host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+    url = f"{host}/api/chat"
+
+    data = {
+        "model": model,
+        "messages": messages,
+        "options": options,
+        "stream": False
+    }
     if fmt:
-        kwargs["format"] = fmt
-    with _cf.ThreadPoolExecutor(max_workers=1) as ex:
-        fut = ex.submit(ollama.chat, **kwargs)
-        try:
-            return fut.result(timeout=timeout)
-        except _cf.TimeoutError:
+        data["format"] = fmt
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(data).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            res_data = json.loads(response.read().decode("utf-8"))
+            return res_data
+    except Exception as e:
+        if isinstance(e, socket.timeout) or "timed out" in str(e).lower():
             log(f"  [AI] ⏱  {model} timed out after {timeout}s")
             return None
-        except Exception as e:
-            raise e
+        log(f"  [AI] ❌ {model} error: {e}")
+        return None
 
 
 def ai_call(system: str, user: str, max_tokens: int = 4096,
@@ -296,6 +316,8 @@ def ai_call(system: str, user: str, max_tokens: int = 4096,
         if model in seen_models:
             continue  # don't try the same model twice if AI_MODEL == chain entry
         seen_models.add(model)
+        if os.getenv("ONLY_AI_MODEL", "false").lower() == "true" and model != AI_MODEL:
+            continue
         if model not in _AVAILABLE and model != AI_MODEL:
             continue
         effective = min(max_tokens, tok)
@@ -1881,7 +1903,7 @@ class AutonomousTestAgent:
         log("  [COMPILE] Compiling spec to JSON...")
         compiled = compile_spec(spec_path.read_text(encoding="utf-8"), str(spec_path))
         compiled_path = spec_path.with_suffix(".spec.json")
-        compiled_path.write_text(json.dumps(compiled, indent=2, ensure_ascii=False))
+        compiled_path.write_text(json.dumps(compiled, indent=2, ensure_ascii=False), encoding="utf-8")
         log(f"  [COMPILE] {len(compiled['selectors'])} selectors | saved → {compiled_path.name}")
 
         # 2b. Optional browser-use discovery
@@ -1949,7 +1971,7 @@ class AutonomousTestAgent:
                                       "passed": 0, "failed": 0, "bugs": [], "gaps": ""}
             return
         log(f"  [VALIDATE] ✅ {code.count('def test_')} tests validated")
-        test_file.write_text(code)
+        test_file.write_text(code, encoding="utf-8")
         log(f"  [SAVE]  {test_file}")
 
         # Track test data — write immediately so CI has data even if cancelled
@@ -2141,7 +2163,7 @@ class AutonomousTestAgent:
 
     def _banner(self):
         log("═"*64)
-        log("  Mehad Autonomous AI Test Agent  v5")
+        log("  My Coifeur Autonomous AI Test Agent  v5")
         log(f"  Primary model  : {AI_MODEL}")
         log(f"  Model chain    : {len(MODEL_CHAIN)} models (all free/open-source)")
         log(f"  AI timeout     : {AI_TIMEOUT}s per call")

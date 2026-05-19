@@ -4,7 +4,9 @@
   "fixes": {},
   "flaky_tests": [
     "test_login_no_console_errors",
-    "test_reset_password_no_console_errors"
+    "test_reset_password_no_console_errors",
+    "test_smoke_page_accessible",
+    "test_flow_complete_cross_role_journey"
   ],
   "known_good_selectors": {},
   "selector_attempts": {}

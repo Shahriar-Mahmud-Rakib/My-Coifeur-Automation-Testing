@@ -435,9 +435,11 @@ My-Coifeur-Automation-Testing/
 ├── run.py                        ← Single-command runner (visible browser by default)
 │
 ├── specs/                        ← YOUR INPUT (edit these)
-│   ├── login.md                  ← Login page (with EN + AR locales)
-│   ├── student_*.md              ← Student-side flows (favorites, payments, etc.)
-│   ├── tutor_*.md                ← Tutor-side flows (signup, calendar, etc.)
+│   ├── login_*.md                ← Authentication & OTP specs (Client, Salon, Admin)
+│   ├── guest_*.md                ← Guest-side specs (landing, search, categories)
+│   ├── client_*.md               ← Client-side specs (booking, cart, checkout, payments, profile)
+│   ├── salon_*.md                ← Salon/Provider specs (workspace, gallery, catalogs, orders)
+│   ├── admin_*.md                ← Admin Dashboard specs (customers, bookings, finance, settings)
 │   ├── TEMPLATE.md               ← Copy this to add new pages
 │   └── *.spec.json               ← Auto-compiled (do not edit)
 │
@@ -493,6 +495,40 @@ My-Coifeur-Automation-Testing/
 └── .github/workflows/
     └── ai-tests.yml              ← 18 parallel QA agents + AI Test Agent + consolidate (My Coifeur)
 ```
+
+---
+
+## My Coifeur E2E Test Roadmap (By Actor)
+
+### 1. Guest (Service Discovery)
+- **Landing Page & Navigation:** Verify responsive layout, logo presence, core SEO metadata, and multilanguage toggles.
+- **Search & Filters:** Discover salons by services, search keywords, category filters, and location.
+- **Salon Profiling:** Browse salon descriptions, opening hours, gallery photos, and price list without authentication.
+
+### 2. Client / User (Booking Lifecycle)
+- **Registration & OTP:** Verify sign-up flow, email validation, and SMS OTP verification steps.
+- **Cart Management:** Add/remove services, dynamic price calculations, and item persistence.
+- **Checkout & Payments:** Execute E2E checkout using mock payments (Credit Card, Apple Pay, Cash/POS) and verify order confirmation.
+- **Client Profile:** Edit full name, email validation, check appointment history, and reward points.
+
+### 3. Salon as Provider (Provider Management)
+- **Salon Onboarding:** Complete provider registration form, upload salon license documentation, and submit.
+- **Workspace Setup:** Configure working days, opening/closing hours, break allocations, and session buffer times.
+- **Service Catalog:** Create, edit, and delete services, prices, and special offer packages.
+- **Gallery Management:** Upload workspace profile photos, arrange gallery catalog, and delete pictures.
+- **Order Management:** Real-time booking requests dashboard, accept/complete/reject appointments, and view salon wallet balances.
+
+### 4. Admin (Platform Governance)
+- **Overview Dashboard:** Audit total revenue, active orders chart, and platform operational metrics.
+- **Bookings Supervision:** Monitor all orders, assign bookings to specific salons, accept pending jobs, or reject with a required comment.
+- **Customer Control:** Comprehensive CRUD (register customer with profile picture, update info, check bounds, wrong/correct emails, and delete).
+- **Salon Verification:** Approve new providers, toggle VIP status, review license documents, and block/ban violators.
+- **Financial Audit:** Monitor transaction commissions, approve/reject withdrawal requests, and execute manual payout transfers.
+- **System Settings:** Configure platform parameters, SMTP mail host/port credentials, and Twilio SMS connection details.
+- **Platform Catalogs:** Manage categories (multilingual English/Arabic names, sort orders) and Promotional Promo Codes (discount calculations, expiry validations, usage limits).
+- **Support Inbox:** Read, reply, and resolve incoming client support contact inquiries.
+
+---
 
 ---
 

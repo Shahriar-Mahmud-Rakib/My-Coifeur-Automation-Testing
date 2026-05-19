@@ -81,13 +81,13 @@ def ensure_ollama_serving() -> None:
 
 
 def run_demo(env: dict) -> int:
-    """Visible-browser demo: QA-01 Functional. ~45 tests, ~3 min."""
+    """Visible-browser demo: Smoke tests across all specs. ~10 tests, ~2 min."""
     print("=" * 64)
-    print("DEMO MODE — TestQA01Functional with visible browser")
+    print("DEMO MODE — Smoke tests with visible browser")
     print(f"Target: {env.get('BASE_URL')}")
     print("=" * 64)
     cmd = [sys.executable, "-m", "pytest",
-           "tests/test_qa_comprehensive.py::TestQA01Functional",
+           "tests", "-k", "smoke",
            "--browser=chromium",
            "--tb=short", "-v", "--timeout=90",
            "-p", "no:cacheprovider"]
@@ -110,15 +110,16 @@ def run_ai(env: dict) -> int:
 
 
 def run_all(env: dict) -> int:
-    """Every TestQA* class. ~340+ tests, ~30 min."""
+    """Run all tests in tests/. ~50+ tests, ~10 min."""
     print("=" * 64)
-    print("FULL MODE — every QA agent suite")
+    print("FULL MODE — Running all generated tests in tests/")
     print(f"Target: {env.get('BASE_URL')}")
     print("=" * 64)
     cmd = [sys.executable, "-m", "pytest",
-           "tests/test_qa_comprehensive.py",
+           "tests",
            "--browser=chromium",
            "--tb=short", "-v", "--timeout=90",
+           "--html=reports/report.html", "--self-contained-html",
            "-p", "no:cacheprovider"]
     if env.get("HEADED") == "1":
         cmd.append("--headed")
@@ -138,7 +139,7 @@ def main(argv: list[str]) -> int:
     ensure_ollama_serving()
 
     env = os.environ.copy()
-    env.setdefault("BASE_URL", args["url"] or "https://dev.mehadedu.com/en")
+    env.setdefault("BASE_URL", args["url"] or "https://dev.mycoifeur.com.sa")
     if args["url"]:
         env["BASE_URL"] = args["url"]
     env["HEADED"] = "1" if args["headed"] else "0"

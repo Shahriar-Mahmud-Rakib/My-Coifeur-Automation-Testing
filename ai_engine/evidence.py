@@ -14,7 +14,7 @@ SCREENSHOTS_DIR = _ROOT / "reports" / "screenshots"
 def load_screenshot_index() -> dict:
     idx = SCREENSHOTS_DIR / "_index.json"
     try:
-        return json.loads(idx.read_text()) if idx.exists() else {}
+        return json.loads(idx.read_text(encoding="utf-8")) if idx.exists() else {}
     except Exception:
         return {}
 
@@ -22,7 +22,7 @@ def load_screenshot_index() -> dict:
 def load_evidence_index() -> dict:
     idx = EVIDENCE_DIR / "_index.json"
     try:
-        return json.loads(idx.read_text()) if idx.exists() else {}
+        return json.loads(idx.read_text(encoding="utf-8")) if idx.exists() else {}
     except Exception:
         return {}
 
@@ -34,7 +34,7 @@ def load_evidence_for(node_id: str, evidence_index: dict | None = None) -> dict:
     if not path:
         return {}
     try:
-        return json.loads(Path(path).read_text())
+        return json.loads(Path(path).read_text(encoding="utf-8"))
     except Exception:
         return {}
 

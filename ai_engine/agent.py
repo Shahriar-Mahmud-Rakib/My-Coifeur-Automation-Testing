@@ -1663,7 +1663,7 @@ def run_tests(test_file: Path) -> dict:
     log(f"  [COLLECT] {collected} test function(s) found")
     if collected == 0:
         log("  [COLLECT] ⚠️  0 tests — file content:")
-        log(test_file.read_text())
+        log(test_file.read_text(encoding="utf-8"))
 
     log("  [PYTEST] Running tests...")
     rc, output = _stream(
@@ -1678,7 +1678,7 @@ def run_tests(test_file: Path) -> dict:
     passed = failed = total = 0
     if json_report.exists():
         try:
-            s = json.loads(json_report.read_text()).get("summary", {})
+            s = json.loads(json_report.read_text(encoding="utf-8")).get("summary", {})
             passed = s.get("passed", 0)
             failed = s.get("failed", 0) + s.get("error", 0)
             total  = s.get("total", 0)

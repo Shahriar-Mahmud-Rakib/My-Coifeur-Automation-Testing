@@ -1434,6 +1434,23 @@ ALL_TYPES = [
     ("validation",     validation),
     ("negative",       negative),
     ("edge_cases",     edge_cases),
+    ("boundary",       boundary),
+    ("data_driven",    data_driven),
+    ("deep_form",      deep_form),
+    ("api_network",    api_network),
+    ("accessibility",  accessibility),
+    ("responsive",     responsive),
+    ("navigation",     navigation),
+    ("session_auth",   session_auth),
+    ("performance",    performance),
+    ("console_errors", console_errors),
+    ("error_states",   error_states),
+    ("visual",         visual),
+    ("cross_browser",  cross_browser),
+    ("i18n",           i18n),
+    ("rate_limiting",  rate_limiting),
+    ("cookie_storage", cookie_storage),
+    ("multi_language", multi_language),
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1859,7 +1876,7 @@ def generate_all(
 
     # ── Spec directive filter ──────────────────────────────────────────────
     directives = _load_skip_directives(spec)
-    skip_types: set[str] = {"security"}
+    skip_types: set[str] = set()
     if directives is not None and not directives.empty():
         skip_types.update(t.lower() for t in directives.skip_test_types)
         print(f"  [GEN] honoring spec directives — skipping types: {sorted(skip_types)}",

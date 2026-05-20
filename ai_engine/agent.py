@@ -125,7 +125,7 @@ TESTS_DIR        = Path("tests")
 REPORTS_DIR      = Path("reports")
 SHOTS_DIR        = Path("reports/screenshots")
 MAX_FIX_RETRIES  = int(os.getenv("MAX_FIX_RETRIES", "3"))
-_MAX_TIMEOUTS    = 1   # blacklist a model after this many timeouts per session
+_MAX_TIMEOUTS    = 3   # blacklist a model after this many timeouts per session
 
 # Spec files to skip — these are templates/docs, not real test specs
 _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
@@ -137,11 +137,13 @@ _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
 # are EXCLUDED — they consistently produce malformed Python and waste a slot.
 # Smaller models get shorter timeouts so they fail fast and free the chain.
 MODEL_CHAIN = [
-    # Tier 1 — small fast code-specialist models (CPU optimized)
-    ("qwen2.5-coder:1.5b",    4096, 0.05, 45),
-    # Tier 2 — fallbacks
-    ("qwen2.5-coder:3b",      3000, 0.10, 60),
-    ("deepseek-coder:1.3b",   2500, 0.10, 60),
+    # Tier 1 — high-fidelity 7B code specialist
+    ("qwen2.5-coder:7b",      4096, 0.05, 180),
+    # Tier 2 — small fast fallback
+    ("qwen2.5-coder:1.5b",    4096, 0.05, 120),
+    # Tier 3 — fallbacks
+    ("qwen2.5-coder:3b",      3000, 0.10, 120),
+    ("deepseek-coder:1.3b",   2500, 0.10, 120),
 ]
 
 # Few-shot examples seed the model with the EXACT format we want.

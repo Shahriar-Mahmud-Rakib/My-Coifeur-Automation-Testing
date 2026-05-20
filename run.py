@@ -142,8 +142,8 @@ def main(argv: list[str]) -> int:
     if args["url"]:
         env["BASE_URL"] = args["url"]
     env["HEADED"] = "1" if args["headed"] else "0"
-    # Default to the small first-run model
-    env.setdefault("AI_MODEL", "qwen2.5-coder:1.5b")
+    # Default to the new high-quality model
+    env.setdefault("AI_MODEL", "qwen2.5-coder:7b")
 
     if args["mode"] == "ai":
         return run_ai(env)

@@ -92,7 +92,7 @@ def log(msg=""):
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_URL         = os.getenv("BASE_URL",  "https://beta-stg.fagun.ai")
-AI_MODEL         = os.getenv("AI_MODEL",  "qwen2.5-coder:1.5b")
+AI_MODEL         = os.getenv("AI_MODEL",  "qwen2.5-coder:7b")
 AI_TIMEOUT       = int(os.getenv("AI_TIMEOUT", "90"))    # seconds per ollama call
 BROWSER_USE_ON   = os.getenv("BROWSER_USE_ENABLED", "false").lower() == "true"
 BROWSER_USE_MDL  = os.getenv("BROWSER_USE_MODEL", "qwen2.5:7b")

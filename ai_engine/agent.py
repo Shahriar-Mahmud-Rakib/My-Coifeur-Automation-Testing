@@ -1938,7 +1938,7 @@ class AutonomousTestAgent:
             except Exception as e:
                 log(f"  [BROWSER-USE] ⚠️  Discovery failed: {e}")
 
-        test_file = TESTS_DIR / f"test_{name.replace('-','_')}.py"
+        test_file = TESTS_DIR / f"{name.replace('-','_')}.py"
 
         # 2c. ── AI cache check ──────────────────────────────────────────
         # If we previously generated tests for THIS spec+URL combo and they

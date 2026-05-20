@@ -1285,7 +1285,7 @@ def _spec_detail_block(spec_name: str, result: dict, block_idx: int) -> str:
     outcomes    = _load_pytest_outcomes(json_report) if json_report else {}
 
     tests_dir  = Path("tests")
-    test_file  = tests_dir / f"test_{spec_name.replace('-', '_')}.py"
+    test_file  = tests_dir / f"{spec_name.replace('-', '_')}.py"
     test_info  = _parse_test_file(test_file) if test_file.exists() else {}
 
     # Pull pre-built passed/failed records from the consolidator if present.

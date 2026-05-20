@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "My Coifeur Automation Testing Scripts",
   "scripts": {
-    "admin": "py run.py --ai",
+    "admin": "py run.py --admin",
     "test": "py run.py --all",
     "demo": "py run.py --demo"
   },

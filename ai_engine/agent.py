@@ -137,25 +137,11 @@ _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
 # are EXCLUDED — they consistently produce malformed Python and waste a slot.
 # Smaller models get shorter timeouts so they fail fast and free the chain.
 MODEL_CHAIN = [
-    # Tier 1 — large code-specialist models (best quality)
-    ("qwen2.5-coder:7b",      4096, 0.05, 300),
-    (AI_MODEL,                4096, 0.05, 300),   # whatever AI_MODEL is set to
-    ("deepseek-coder:6.7b",   4096, 0.05, 300),
-    ("codellama:7b",          3500, 0.08, 300),
-    # Tier 2 — large general models (good fallback for non-code tasks)
-    ("qwen2.5:7b",            3500, 0.08, 300),
-    ("mistral:7b",            3000, 0.08, 300),
-    ("phi4:3.8b",             3000, 0.08, 300),
-    # Tier 3 — small code models (fast + decent code quality)
-    ("qwen2.5-coder:3b",      3000, 0.10, 300),
-    ("deepseek-coder:1.3b",   2500, 0.10, 300),
-    ("qwen2.5-coder:1.5b",    2500, 0.12, 300),
-    # Tier 4 — small general models (only used if all coders unavailable)
-    ("llama3.2:3b",           3000, 0.10, 300),
-    ("phi3.5",                3000, 0.10, 300),
-    ("gemma2:2b",             2500, 0.10, 300),
-    # NOTE: removed tinyllama:1.1b, qwen2.5:0.5b, llama3.2:1b — these
-    # produce broken Python ~95% of the time, wasting model-chain slots.
+    # Tier 1 — small fast code-specialist models (CPU optimized)
+    ("qwen2.5-coder:1.5b",    4096, 0.05, 45),
+    # Tier 2 — fallbacks
+    ("qwen2.5-coder:3b",      3000, 0.10, 60),
+    ("deepseek-coder:1.3b",   2500, 0.10, 60),
 ]
 
 # Few-shot examples seed the model with the EXACT format we want.
@@ -217,9 +203,9 @@ ASSERTIONS — prefer `expect()` over raw asserts:
 - expect(locator).to_be_enabled() / .to_be_disabled()
 
 TEST DATA:
-- Unique emails:  f"qa_{{int(time.time())}}@mailinator.com"
-- Passwords:      os.getenv("TEST_PASSWORD", "Test@1234!")
-- Test phone:     os.getenv("TEST_PHONE", "512345678")  # 9-digit Saudi default
+- Emails:         os.getenv("TEST_USER", "test19@example.com")
+- Passwords:      os.getenv("TEST_PASSWORD", "Password123456")
+- Test phone:     os.getenv("TEST_PHONE", "966501234575")
 - Test OTP:       os.getenv("TEST_OTP", "123456")
 
 OTP / WHATSAPP / SMS LOGIN PAGES (when spec mentions OTP, WhatsApp, modal):
@@ -280,10 +266,16 @@ def _chat_with_timeout(model: str, messages: list, options: dict,
     host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
     url = f"{host}/api/chat"
 
+    if os.getenv("OLLAMA_NO_GPU") == "true":
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        os.environ["GGML_VK_VISIBLE_DEVICES"] = "-1"
+    merged_options = dict(options)
+    merged_options.setdefault("num_ctx", 2048)
+
     data = {
         "model": model,
         "messages": messages,
-        "options": options,
+        "options": merged_options,
         "stream": False
     }
     if fmt:
@@ -538,8 +530,8 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f"{i}        page.locator(\"{name_sel}\").first.fill(\"Test User\")",
             f"{i}except Exception:",
             f"{i}    pass",
-            f"{i}page.locator(\"{email_sel}\").fill(f\"qa_{{int(time.time())}}@mailinator.com\")",
-            f"{i}page.locator(\"{pass_sel}\").fill(os.getenv(\"TEST_PASSWORD\", \"Test@1234!\"))",
+            f"{i}page.locator(\"{email_sel}\").fill(os.getenv(\"TEST_USER\", \"test19@example.com\"))",
+            f"{i}page.locator(\"{pass_sel}\").fill(os.getenv(\"TEST_PASSWORD\", \"Password123456\"))",
             f"{i}try:",
             f"{i}    if page.locator(\"{confirm_sel}\").count() > 0:",
             f"{i}        page.locator(\"{confirm_sel}\").first.fill(os.getenv(\"TEST_PASSWORD\", \"Test@1234!\"))",
@@ -728,8 +720,8 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit login form with valid credentials."""',
             f'    # TEST_DATA: valid email + TEST_PASSWORD env var',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill(f"qa_{{int(time.time())}}@mailinator.com")',
-            f'    page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Test@1234!"))',
+            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
+            f'    page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Password123456"))',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after login submit"',
@@ -741,9 +733,9 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit form with a valid email address."""',
             f'    # TEST_DATA: test email address',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill(f"qa_{{int(time.time())}}@mailinator.com")',
+            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
             f'    if page.locator("{pass_sel}").count() > 0:',
-            f'        page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Test@1234!"))',
+            f'        page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Password123456"))',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after submit"',
@@ -756,7 +748,7 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit password reset with a valid email."""',
             f'    # TEST_DATA: reset email address',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill("qa_reset@mailinator.com")',
+            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after reset submit"',

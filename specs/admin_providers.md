@@ -1,103 +1,140 @@
-# Page: My Coifeur — Admin Providers (Salon Management)
-**URL:** `https://dev.mycoifeur.com.sa/en/admin/login`
+# Page: My Coifeur — Admin Providers (Salon Management CRUD)
+**URL:** `https://dev.mycoifeur.com.sa/en/admin-login`
+**Admin Panel URL:** `https://dev.mycoifeur.com.sa/en/admin/providers`
 **Type:** E2E Admin Providers Flow
 **Priority:** P0
 
 ---
 
 ## Page Purpose
-End-to-End test for the Admin Providers (Salons) module covering:
-- Salon List, search, and pagination
-- Updating Salon Information
-- Ban/Block and Unban/Restore Salons
-- Setting/unsetting Salon VIP status
-- Gallery photo uploads and Working days review
+Comprehensive E2E test for the Admin Providers (Salons) module. Admins manage service providers, view detail tabs (Gallery, Working Days), edit salon profiles, ban/restore accounts, set VIP status, and manage listings.
+
+**API Endpoints:**
+- `GET /api/v1/web/admin/salons` — list all salons
+- `GET /api/v1/web/admin/salons?status={status}` — filter by status
+- `PUT /api/v1/web/admin/salons/{id}` — edit salon details
+- `POST /api/v1/web/admin/salons/{id}/ban` — ban provider
+- `POST /api/v1/web/admin/salons/{id}/restore` — restore banned provider
+- `POST /api/v1/web/admin/salons/{id}/vip` — toggle VIP status
+- `GET /api/v1/web/admin/salons/{id}/working-days` — list salon schedule
+- `DELETE /api/v1/web/admin/salons/gallery/{imgId}` — delete gallery image
 
 ---
 
 ## UI Elements
+
+### Providers List Page
 | Element | Identifier Hint | Type | Required | Notes |
 |---|---|---|---|---|
-| Admin Email | `input[name="email"]` | Email Input | Yes | Admin login email |
-| Admin Password | `input[name="password"]` | Password | Yes | Admin login password |
-| Login Button | `button[type="submit"]` | Submit Button| Yes | Submits admin login |
-| Providers Link | `a[href*="/providers"], a[href*="/salons"]` | Anchor | Yes | Sidebar navigation link |
-| Search Providers Input | `input[placeholder*="Search"]` | Text Input | No | Search bar to filter salons |
-| First Edit Btn | `(.edit-btn, button[data-action="edit"])[0]` | Button | Yes | Edit action on the first salon |
-| Provider Name Input | `input[name="salon_name"], input[name="fname"]` | Text Input | Yes | Provider Name field |
-| Save Provider Btn | `button[data-action="save"], button:has-text("Save")` | Button | Yes | Saves provider details changes |
-| Ban Provider Btn | `button[data-action="ban"], .ban-btn, button:has-text("Ban")` | Button | Yes | Opens block/ban confirmation modal |
-| Ban Reason Input | `textarea[name="ban_reason"], textarea[placeholder*="Reason"]` | Text Area | Yes | Input field for explanation reason |
-| Confirm Ban Btn | `button[data-action="confirm-ban"], button:has-text("Confirm Ban")` | Button | Yes | Confirms ban operation |
-| Restore Banned Btn | `button[data-action="restore"], .restore-btn, button:has-text("Restore")` | Button | No | Reverses ban block |
-| VIP Toggle Switch | `input[type="checkbox"][name="is_vip"], .vip-toggle` | Checkbox | Yes | Toggles VIP status |
-| Gallery Tab | `[data-tab="gallery"], button:has-text("Gallery")` | Tab/Button | Yes | Navigates to Salon gallery |
-| Gallery Image Upload | `input[type="file"][name="gallery_image"]` | File Input | Yes | Image upload control for gallery |
-| Working Days Tab | `[data-tab="working-days"], button:has-text("Working Days")` | Tab/Button | Yes | Navigates to Salon working hours |
-| Success Toast | `.toast-success, .success-message, [role="alert"]` | Element | Yes | Confirms actions success |
+| Page Title | `h1:has-text("Providers")` | Heading | Yes | Title "Providers" |
+| Search Input | `input[placeholder*="Search by provider ID or name"]` | Text Input | Yes | Filters providers list |
+| Status Tabs | `[role="tab"]` | Tab | Yes | Tabs: All, Approved, Pending, Rejected |
+| Providers Table | `table` | Table | Yes | List of providers |
+| Table Columns | `th` | Header | Yes | Columns: PROVIDER, EMAIL, PHONE, STATUS, VIP, ACTIONS |
+| Actions Menu | `button:has-text("...")` | Button | Yes | 3-dot actions dropdown |
+
+### Actions Dropdown Menu
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| View Details | `[role="menuitem"]:has-text("View Details")` | Menu Item | Yes | Open provider details |
+| Edit Provider | `[role="menuitem"]:has-text("Edit Provider")` | Menu Item | Yes | Opens edit modal |
+| Ban Provider | `[role="menuitem"]:has-text("Ban Provider")` | Menu Item | Yes | Opens ban dialog |
+| Restore Provider | `[role="menuitem"]:has-text("Restore Provider")` | Menu Item | No | Only for banned providers |
+
+### Edit Provider Modal
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Salon Name Input | `input[name="name"]` | Text Input | Yes | Edit salon name |
+| Salon Phone Input | `input[name="phone"]` | Text Input | Yes | Edit phone |
+| VIP Toggle | `input[name="is_vip"]` | Checkbox | Yes | Toggle VIP badge |
+| Save Changes | `button:has-text("Save Changes")` | Button | Yes | Submit edit |
+| Cancel | `button:has-text("Cancel")` | Button | Yes | Close modal |
 
 ---
 
 ## User Flows
 
-### Flow 1: Update Provider Details
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Providers Link"
-6. Click "First Edit Btn"
-7. Enter Provider Name Input: "Automated Premium Salon QA"
-8. Click "Save Provider Btn"
-9. Assert "Success Toast" is visible
+### Flow 1: List Providers and Verify Table
+1. Login as admin (amrmuhamed9@gmail.com / 123456)
+2. Navigate to `/en/admin/providers`
+3. Assert page heading "Providers" is visible
+4. Assert table columns exist: PROVIDER, EMAIL, PHONE, STATUS, VIP, ACTIONS
 
-### Flow 2: Ban & Restore Salon Provider
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Providers Link"
-6. Click "Ban Provider Btn" on the first salon
-7. Enter Ban Reason Input: "Temporary block for payment discrepancy"
-8. Click "Confirm Ban Btn"
-9. Assert "Success Toast" is visible
-10. Click "Restore Banned Btn" to restore the salon
-11. Assert "Success Toast" is visible
+### Flow 2: Search Provider by Name
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Type a known provider name in search input
+4. Assert only matching provider rows are displayed
+5. Clear search input and assert all rows reappear
 
-### Flow 3: Toggle VIP Status
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Providers Link"
-6. Click "First Edit Btn"
-7. Check or Uncheck "VIP Toggle Switch" to change status
-8. Click "Save Provider Btn"
-9. Assert "Success Toast" is visible
+### Flow 3: Filter Providers by Status Tab — Pending
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click "Pending" status tab
+4. Assert only pending status providers are displayed
 
-### Flow 4: Upload Photo to Gallery
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Providers Link"
-6. Click "First Edit Btn"
-7. Click "Gallery Tab"
-8. Upload Gallery Image Upload: "dummy_salon_photo.png"
-9. Assert "Success Toast" is visible
+### Flow 4: Filter Providers by Status Tab — Approved
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click "Approved" status tab
+4. Assert only approved providers are listed
+
+### Flow 5: Edit Provider Info via Modal
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click 3-dot Actions menu on a provider row
+4. Select "Edit Provider"
+5. Assert Edit modal appears
+6. Change salon name to "QA Updated Salon"
+7. Click "Save Changes"
+8. Assert success toast is shown and table updates
+
+### Flow 6: Toggle VIP Status in Modal
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click Actions -> Edit Provider
+4. Toggle the "VIP Toggle" checkbox
+5. Save changes and verify VIP pill is updated in table
+
+### Flow 7: Ban Provider with Reason
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click Actions -> Ban Provider
+4. Fill "Ban Reason Input" with "Violation of terms"
+5. Click "Confirm Ban"
+6. Assert success toast and status badge changes to "Banned"
+
+### Flow 8: Restore Banned Provider
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Filter by "Rejected" or "Banned" status
+4. Click Actions -> Restore Provider
+5. Assert success toast and status badge updates to "Approved"
+
+### Flow 9: View Salon Details Page
+1. Login as admin
+2. Navigate to `/en/admin/providers`
+3. Click Actions -> View Details
+4. Assert URL contains `/admin/providers/`
+5. Assert detail cards (Overview, Services, Gallery, Working Days) exist
+
+### Flow 10: View Provider Schedule (Working Days)
+1. Login as admin
+2. Navigate to provider details page
+3. Click "Working Days" tab
+4. Assert schedule table (Monday-Sunday, timeslots) is visible
 
 ---
 
 ## Validation Rules
 | Field | Rule | Error Message |
 |---|---|---|
-| Provider Name Input | Required | "Provider name cannot be empty" |
-| Ban Reason Input | Required when banning | "Ban reason must be specified" |
+| Salon Name Input | Required | "Salon name is required" |
+| Ban Reason Input | Required on ban | "Reason is required" |
 
 ---
 
 ## Edge Cases
-| ID | Scenario | Expected |
-|---|---|---|
-| EC-01 | Ban salon without reason | Error message displays on form |
-| EC-02 | Upload invalid file type to gallery | Shows error toast "Invalid file format" |
+- EC-01: Ban already banned provider (should not be allowed/visible)
+- EC-02: Search with special characters (sanitized, empty state)
+- EC-03: Access without authentication (redirect to login)

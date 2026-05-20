@@ -1,100 +1,102 @@
 # Page: My Coifeur — Admin Settings (System Configuration)
-**URL:** `https://dev.mycoifeur.com.sa/en/admin/login`
+**URL:** `https://dev.mycoifeur.com.sa/en/admin-login`
+**Admin Panel URL:** `https://dev.mycoifeur.com.sa/en/admin/settings`
 **Type:** E2E Admin Settings Flow
 **Priority:** P0
 
 ---
 
 ## Page Purpose
-End-to-End comprehensive test for the Admin Settings module covering:
-- General configurations (App Name, Maintenance Mode status toggle)
-- SMS Provider integrations (Twilio credentials)
-- SMTP/Mail server configurations (SMTP Host, Port value bounds, secure transport toggle)
+Comprehensive E2E test for the Admin Settings module. Admins configure general system values (localized titles, contact details, maps keys), email provider (SMTP details), connection integration, loyalty settings, and roles & permissions cards.
+
+**API Endpoints:**
+- `GET /api/v1/web/admin/settings` — list current configuration values
+- `PUT /api/v1/web/admin/settings` — save new settings values
+- `GET /api/v1/web/admin/settings/roles` — get user roles and permissions list
+- `PUT /api/v1/web/admin/settings/roles/{id}` — configure permissions for a role
 
 ---
 
 ## UI Elements
+
+### Settings Page Tabs Left Panel
 | Element | Identifier Hint | Type | Required | Notes |
 |---|---|---|---|---|
-| Admin Email | `input[name="email"]` | Email Input | Yes | Admin login email |
-| Admin Password | `input[name="password"]` | Password | Yes | Admin login password |
-| Login Button | `button[type="submit"]` | Submit Button| Yes | Submits admin login |
-| Settings Link | `a[href*="/settings"]` | Anchor | Yes | Sidebar settings menu link |
-| App Name Input | `input[name="app_name"]` | Text Input | Yes | Platform name field |
-| Maintenance Toggle | `input[type="checkbox"][name="maintenance_mode"], .maintenance-toggle` | Checkbox | Yes | Toggles offline maintenance mode |
-| Connection Settings Tab | `[data-tab="connection"], button:has-text("Connection")` | Tab/Button | Yes | Navigates to SMS Connection |
-| SMS Provider Select | `select[name="sms_provider"]` | Select | Yes |twilo or other SMS provider |
-| SMS API Key Input | `input[name="sms_api_key"]` | Password | Yes | Twilio auth token or key |
-| Mail Provider Tab | `[data-tab="mail"], button:has-text("Mail Provider")` | Tab/Button | Yes | SMTP server configurations |
-| SMTP Host Input | `input[name="host"], input[placeholder*="Host"]` | Text Input | Yes | Mail server hostname |
-| SMTP Port Input | `input[name="port"], input[type="number"]` | Number Input | Yes | Port code (e.g. 587, 465) |
-| Save Settings Btn | `button[data-action="save-settings"], button:has-text("Save Settings")` | Button | Yes | Submits settings form changes |
-| Success Toast | `.toast-success, .success-message, [role="alert"]` | Element | Yes | Confirms actions success |
+| General Settings Tab | `[role="tab"]:has-text("General Settings")` | Tab | Yes | Edit localized titles, contacts |
+| Email Provider Tab | `[role="tab"]:has-text("Email Provider")` | Tab | Yes | SMTP configuration |
+| Connection Settings Tab | `[role="tab"]:has-text("Connection Settings")` | Tab | Yes | App connections, external tokens |
+| App Versions Tab | `[role="tab"]:has-text("App Versions")` | Tab | Yes | Version controls |
+| Version Analytics Tab | `[role="tab"]:has-text("Version Analytics")` | Tab | Yes | Usage stats |
+| Roles & Permissions Tab | `[role="tab"]:has-text("Roles & Permissions")` | Tab | Yes | RBAC access settings |
+
+### General Settings Form
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Title in Arabic | `input[name="title_ar"]` | Text Input | Yes | Arabic localized title |
+| Title in English | `input[name="title_en"]` | Text Input | Yes | English localized title |
+| Content in Arabic | `textarea[name="content_ar"]` | Text Area | Yes | Localization content |
+| Content in English | `textarea[name="content_en"]` | Text Area | Yes | Localization content |
+| Google Maps API Key | `input[name="google_maps"]` | Text Input | Yes | Map integration key |
+| Keywords | `input[name="keywords"]` | Text Input | Yes | Comma-separated SEO tags |
+| Cash Payment Tax | `input[name="cash_tax"]` | Number Input | Yes | Tax rate for cash payments |
+| Save Changes | `button:has-text("Save Changes")` | Button | Yes | Submit general configuration |
+
+### Roles & Permissions Tab Layout
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Super Admin Role Card | `div:has-text("Super Admin")` | Card | Yes | Full system rights description |
+| Support Role Card | `div:has-text("Support")` | Card | Yes | Support rights description |
+| Configure Role Button | `.role-card button:has-text("Configure")` | Button | Yes | Open role permissions modal |
+
+### Configure Role Modal
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Role Name * | `input[name="role_name"]` | Text Input | Yes | Edit role label |
+| Enable All Switch | `.switch:has-text("Enable All")` | Toggle | Yes | Toggle all permissions |
+| Accordion Group Header | `button:has-text("Settings & System")` | Button | Yes | Accordion list panel trigger |
+| Permission Checkbox | `input[type="checkbox"]` | Checkbox | Yes | Toggle single permission |
+| Save Changes | `button:has-text("Save Changes")` | Button | Yes | Submit RBAC updates |
+| Cancel | `button:has-text("Cancel")` | Button | Yes | Dismiss |
 
 ---
 
 ## User Flows
 
-### Flow 1: Update Platform General Settings
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Settings Link"
-6. Enter App Name Input: "My Coifeur Portal QA"
-7. Check or Uncheck "Maintenance Toggle" to switch maintenance mode status
-8. Click "Save Settings Btn"
-9. Assert "Success Toast" is visible
+### Flow 1: Navigate Tabs and Verify Layout
+1. Login as admin (amrmuhamed9@gmail.com / 123456)
+2. Navigate to `/en/admin/settings`
+3. Click through Settings tabs: General Settings, Email Provider, Connection Settings, Roles & Permissions
+4. Assert each form panel displays without crashing
 
-### Flow 2: Configure SMS Connections
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Settings Link"
-6. Click "Connection Settings Tab"
-7. Select SMS Provider Select: Twilio ("twilio")
-8. Enter SMS API Key Input: "TwilioTokenQAValue12345!"
-9. Click "Save Settings Btn"
-10. Assert "Success Toast" is visible
+### Flow 2: Update General Settings SEO & Content
+1. Login as admin
+2. Navigate to General Settings tab
+3. Fill Title in English with "My Coifeur Salon Marketplace"
+4. Fill Keywords with "salons, booking, grooming, hair care"
+5. Click "Save Changes"
+6. Assert success toast is shown and values persist
 
-### Flow 3: Update SMTP Mail Configurations
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Settings Link"
-6. Click "Mail Provider Tab"
-7. Enter SMTP Host Input: "smtp.mailgun.org"
-8. Enter SMTP Port Input: "587"
-9. Click "Save Settings Btn"
-10. Assert "Success Toast" is visible
-
-### Flow 4: Form Validation - Invalid Port Number
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Settings Link"
-6. Click "Mail Provider Tab"
-7. Enter SMTP Port Input: "-999"
-8. Click "Save Settings Btn"
-9. Assert validation error displays near port field (port must be greater than or equal to 0)
+### Flow 3: Configure Roles & Permissions
+1. Login as admin
+2. Navigate to Roles & Permissions tab
+3. Click "Configure" button on the "Support" card
+4. Assert Configuration modal appears
+5. Open "Settings & System" accordion group
+6. Toggle "View settings" checkbox permission
+7. Click "Save Changes"
+8. Assert success toast is shown
 
 ---
 
 ## Validation Rules
 | Field | Rule | Error Message |
 |---|---|---|
-| App Name Input | Required | "App name cannot be empty" |
-| SMTP Host Input | Required | "Mail host is required" |
-| SMTP Port Input | Must be positive | "Port must be positive number" |
+| Title in English | Required | "English title is required" |
+| Cash Payment Tax | Positive number >= 0 | "Tax must be greater than or equal to 0" |
 
 ---
 
 ## Edge Cases
-| ID | Scenario | Expected |
-|---|---|---|
-| EC-01 | Set App Name length greater than 255 chars | Validation blocks submit / truncates |
-| EC-02 | Set zero (0) for SMTP Port number | Handled safely by validation rules |
-| EC-03 | Security - ensure admin password fields are masked | Elements show type="password" attribute |
+- EC-01: Update Map API Key with invalid format (validates or saves as is)
+- EC-02: Disable all permissions for Super Admin (should block to prevent lockout)
+- EC-03: Access settings page without logged in session (redirects to admin login)

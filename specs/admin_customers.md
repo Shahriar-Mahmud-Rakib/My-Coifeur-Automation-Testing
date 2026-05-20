@@ -1,105 +1,113 @@
-# Page: My Coifeur — Admin Customers (Detailed CRUD)
-**URL:** `https://dev.mycoifeur.com.sa/en/admin/login`
+# Page: My Coifeur — Admin Customers (Users CRUD)
+**URL:** `https://dev.mycoifeur.com.sa/en/admin-login`
+**Admin Panel URL:** `https://dev.mycoifeur.com.sa/en/admin/customers`
 **Type:** E2E Admin Customers Flow
 **Priority:** P0
 
 ---
 
 ## Page Purpose
-End-to-End comprehensive test for the Admin Customers module covering:
-- Customer Creation (CRUD)
-- Image Upload (Profile image/avatar)
-- Input Validations (Wrong/correct Email, empty Name, password requirements)
-- Customer Edit and Delete
+Comprehensive E2E test for the Admin Customers (Users) module. Admins manage consumer profiles, verify accounts, manage reward points, toggle block status, and search customer tables.
+
+**API Endpoints:**
+- `GET /api/v1/web/admin/users` — list all users
+- `PUT /api/v1/web/admin/users/{id}` — update user profile
+- `POST /api/v1/web/admin/users/block` — block user
+- `POST /api/v1/web/admin/users/{id}/restore` — restore user
+- `GET /api/v1/web/admin/users/{id}/rewards` — user rewards data
 
 ---
 
 ## UI Elements
+
+### Customers List Page
 | Element | Identifier Hint | Type | Required | Notes |
 |---|---|---|---|---|
-| Admin Email | `input[name="email"]` | Email Input | Yes | Admin login email |
-| Admin Password | `input[name="password"]` | Password | Yes | Admin login password |
-| Login Button | `button[type="submit"]` | Submit Button| Yes | Submits admin login |
-| Customers Link | `a[href*="/customers"]` | Anchor | Yes | Sidebar menu navigation link |
-| Add Customer Btn | `button[data-action="add"], .add-btn, button:has-text("Add Customer")` | Button | Yes | Opens Add Customer form/modal |
-| Customer Name Input | `input[name="name"], input[placeholder*="Name"]` | Text Input | Yes | Customer's full name field |
-| Customer Email Input | `input[name="customer_email"], input[type="email"]` | Email Input | Yes | Customer's email address |
-| Customer Password Input | `input[name="customer_password"], input[type="password"]` | Password | Yes | Customer's initial password |
-| Customer Image Input | `input[type="file"]` | File Input | No | Profile photo/avatar upload |
-| Save Customer Btn | `button[data-action="save"], .save-btn, button:has-text("Save")` | Button | Yes | Submits creation/edit form |
-| Search Customer Input | `input[placeholder*="Search"]` | Text Input | No | Filter bar to search customers |
-| First Edit Btn | `(.edit-btn, button[data-action="edit"])[0]` | Button | Yes | Edit action on the first list item |
-| First Delete Btn | `(.delete-btn, button[data-action="delete"])[0]` | Button | Yes | Delete action on the first list item |
-| Confirm Delete Btn | `button[data-action="confirm-delete"], button:has-text("Yes")` | Button | Yes | Delete modal confirmation button |
-| Error Message Box | `.error-message, .invalid-feedback, .text-danger` | Element | No | Displays inline validation errors |
-| Success Toast | `.toast-success, .success-message, [role="alert"]` | Element | Yes | Confirms successful CRUD operations |
+| Page Title | `h1:has-text("Customers")` | Heading | Yes | Title "Customers" |
+| Search Input | `input[placeholder*="Search customers..."]` | Text Input | Yes | Filters customers list |
+| Add Customer Btn | `button:has-text("Add Customer")` | Button | Yes | Open create form |
+| Customers Table | `table` | Table | Yes | Customer data grid |
+| Table Columns | `th` | Header | Yes | Columns: CUSTOMER, EMAIL, PHONE, STATUS, REWARDS, ACTIONS |
+| Actions Menu | `button:has-text("...")` | Button | Yes | 3-dot actions dropdown |
+
+### Actions Dropdown Menu
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| View Details | `[role="menuitem"]:has-text("View Details")` | Menu Item | Yes | View user details |
+| Edit Customer | `[role="menuitem"]:has-text("Edit Customer")` | Menu Item | Yes | Opens edit modal |
+| Block Customer | `[role="menuitem"]:has-text("Block Customer")` | Menu Item | Yes | Blocks user account |
+| Restore Customer | `[role="menuitem"]:has-text("Restore Customer")` | Menu Item | No | Restores blocked account |
+
+### Add / Edit Customer Modal
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Customer Name | `input[name="name"]` | Text Input | Yes | Full Name |
+| Customer Email | `input[name="email"]` | Email Input | Yes | Email address |
+| Customer Phone | `input[name="phone"]` | Text Input | Yes | Phone starting with 966 |
+| Customer Password | `input[name="password"]` | Password | No | Leave blank to keep current |
+| Save Changes | `button:has-text("Save Changes")` | Button | Yes | Submit |
+| Cancel | `button:has-text("Cancel")` | Button | Yes | Close |
 
 ---
 
 ## User Flows
 
-### Flow 1: Create Customer with Valid Data & Image Upload
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Customers Link"
-6. Click "Add Customer Btn"
-7. Enter Customer Name Input: "John Doe QA"
-8. Enter Customer Email Input: "johndoe_qa@example.com"
-9. Enter Customer Password Input: "SecurePass123!"
-10. Upload Customer Image Input: "dummy_avatar.png"
-11. Click "Save Customer Btn"
-12. Assert "Success Toast" is visible
+### Flow 1: List Customers and Verify Columns
+1. Login as admin (amrmuhamed9@gmail.com / 123456)
+2. Navigate to `/en/admin/customers`
+3. Assert page heading "Customers" is visible
+4. Assert table columns exist: CUSTOMER, EMAIL, PHONE, STATUS, REWARDS, ACTIONS
 
-### Flow 2: Form Validation - Invalid/Wrong Email & Empty Name
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Customers Link"
-6. Click "Add Customer Btn"
-7. Enter Customer Name Input: ""
-8. Enter Customer Email Input: "invalidemailaddress"
-9. Enter Customer Password Input: "123"
-10. Click "Save Customer Btn"
-11. Assert "Error Message Box" is visible (validation failed for empty name, bad email, short password)
+### Flow 2: Search Customer by Email
+1. Login as admin
+2. Navigate to `/en/admin/customers`
+3. Type a known customer email in search input
+4. Assert only matching customer rows are displayed
+5. Clear search input and assert all rows reappear
 
-### Flow 3: Edit and Update Customer Details
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Customers Link"
-6. Click "First Edit Btn"
-7. Enter Customer Name Input: "John Doe QA Updated"
-8. Click "Save Customer Btn"
-9. Assert "Success Toast" is visible
+### Flow 3: Create New Customer Account
+1. Login as admin
+2. Navigate to `/en/admin/customers`
+3. Click "Add Customer" button
+4. Fill Name, Email, Phone (starts with 966), and Password
+5. Click "Save Changes"
+6. Assert success toast is shown and new customer is in table
 
-### Flow 4: Delete Customer
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Customers Link"
-6. Click "First Delete Btn"
-7. Click "Confirm Delete Btn"
-8. Assert "Success Toast" is visible
+### Flow 4: Edit Customer Profile via Modal
+1. Login as admin
+2. Navigate to `/en/admin/customers`
+3. Click 3-dot Actions menu on a customer row
+4. Select "Edit Customer"
+5. Assert Edit modal appears
+6. Change customer name to "QA Updated Customer"
+7. Click "Save Changes"
+8. Assert success toast and table updates
+
+### Flow 5: Block Customer Account
+1. Login as admin
+2. Navigate to `/en/admin/customers`
+3. Click Actions -> Block Customer
+4. Confirm block action in dialog
+5. Assert success toast and status badge changes to "Blocked"
+
+### Flow 6: Restore Blocked Customer
+1. Login as admin
+2. Navigate to `/en/admin/customers`
+3. Click Actions -> Restore Customer
+4. Assert success toast and status badge updates to "Active"
 
 ---
 
 ## Validation Rules
 | Field | Rule | Error Message |
 |---|---|---|
-| Customer Name Input | Required | "Name is required" |
-| Customer Email Input | Email Format | "Invalid email format" |
-| Customer Password Input | Minimum 6 characters | "Password must be at least 6 characters" |
+| Customer Name | Required | "Customer name is required" |
+| Customer Email | Required, valid email | "Invalid email format" |
+| Customer Phone | Required, starts with 966 | "Invalid phone number" |
 
 ---
 
 ## Edge Cases
-| ID | Scenario | Expected |
-|---|---|---|
-| EC-01 | Create Customer with duplicate email | Error message indicating email is already registered |
-| EC-02 | Upload invalid image format (e.g., pdf or txt) | Should show file format error |
-| EC-03 | Delete without confirmation | Delete modal opens, does not delete immediately |
+- EC-01: Block already blocked customer (not visible/possible)
+- EC-02: Search with SQL injection payload (sanitized)
+- EC-03: Access without authentication (redirect to login)

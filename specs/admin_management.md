@@ -1,111 +1,99 @@
-# Page: My Coifeur — Admin Management (Admins & Roles)
-**URL:** `https://dev.mycoifeur.com.sa/en/admin/login`
+# Page: My Coifeur — Admin Management (Admins & Roles CRUD)
+**URL:** `https://dev.mycoifeur.com.sa/en/admin-login`
+**Admin Panel URL:** `https://dev.mycoifeur.com.sa/en/admin/admin-management`
 **Type:** E2E Admin Management Flow
 **Priority:** P0
 
 ---
 
 ## Page Purpose
-End-to-End comprehensive test for the Admin Management module covering:
-- Creating a new Admin account
-- Verifying and toggling Admin active status
-- Creating Roles and configuring role permissions
-- Modifying and deleting Roles
+Comprehensive E2E test for the Admin Management (Admins & Roles) module. Admins manage other administrator accounts, define roles, and assign permissions for role-based access control.
+
+**API Endpoints:**
+- `GET /api/v1/web/admin/admins` — list all admins
+- `POST /api/v1/web/admin/admins` — create new admin
+- `PUT /api/v1/web/admin/admins/{id}` — edit admin details
+- `DELETE /api/v1/web/admin/admins/{id}` — delete admin account
 
 ---
 
 ## UI Elements
+
+### Admin Management Page
 | Element | Identifier Hint | Type | Required | Notes |
 |---|---|---|---|---|
-| Admin Email | `input[name="email"]` | Email Input | Yes | Admin login email |
-| Admin Password | `input[name="password"]` | Password | Yes | Admin login password |
-| Login Button | `button[type="submit"]` | Submit Button| Yes | Submits admin login |
-| Admins Link | `a[href*="/admins"], a[href*="/management"]` | Anchor | Yes | Sidebar management link |
-| Add Admin Btn | `button[data-action="add-admin"], .add-admin-btn, button:has-text("Add Admin")` | Button | Yes | Opens Add Admin account form |
-| New Admin Email Input | `input[name="admin_email"], input[type="email"]` | Email Input | Yes | New admin's login email |
-| New Admin Password Input | `input[name="admin_password"], input[type="password"]` | Password | Yes | New admin's login password |
-| New Admin First Name | `input[name="fname"], input[placeholder*="First Name"]` | Text Input | Yes | New admin first name |
-| New Admin Last Name | `input[name="lname"], input[placeholder*="Last Name"]` | Text Input | Yes | New admin last name |
-| New Admin Phone | `input[name="phone"], input[type="tel"]` | Text Input | Yes | New admin phone number |
-| Save Admin Btn | `button[data-action="save-admin"], button:has-text("Create Admin")` | Button | Yes | Submits new admin creation |
-| Toggle Active Btn | `(.toggle-status-btn, button[data-action="active"])[0]` | Button | Yes | Toggles admin active/suspended status |
-| Verify Admin Btn | `(.verify-btn, button[data-action="verify"])[0]` | Button | Yes | Verifies new admin account |
-| Roles Tab | `[data-tab="roles"], button:has-text("Roles")` | Tab/Button | Yes | Navigates to Roles list |
-| Add Role Btn | `button[data-action="add-role"], button:has-text("Add Role")` | Button | Yes | Opens role creation form |
-| Role Name Input | `input[name="role_name"], input[name="name"]` | Text Input | Yes | Name of the role (e.g. Supervisor) |
-| Permission Checkbox | `input[type="checkbox"][name="permissions[]"]` | Checkbox | No | Permissions checkboxes list |
-| Save Role Btn | `button[data-action="save-role"], button:has-text("Save Role")` | Button | Yes | Submits role form |
-| First Delete Role Btn | `(.delete-role-btn, button[data-action="delete-role"])[0]` | Button | Yes | Deletes first custom role |
-| Confirm Delete Btn | `button[data-action="confirm-delete"], button:has-text("Yes")` | Button | Yes | Deletes role modal confirmation |
-| Success Toast | `.toast-success, .success-message, [role="alert"]` | Element | Yes | Confirms actions success |
+| Page Title | `h1:has-text("Admin Management")` | Heading | Yes | Title "Admin Management" |
+| Search Input | `input[placeholder*="Search by admin name..."]` | Text Input | Yes | Filters admins |
+| Add Admin Btn | `button:has-text("Add Admin")` | Button | Yes | Open create admin form |
+| Admins Table | `table` | Table | Yes | Admin accounts list |
+| Table Columns | `th` | Header | Yes | Columns: ADMIN NAME, E-MAIL, ROLE, STATUS, LAST ACTIVE, ACTIONS |
+| Actions Menu | `button:has-text("...")` | Button | Yes | 3-dot actions dropdown |
+
+### Actions Dropdown Menu
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Edit Admin | `[role="menuitem"]:has-text("Edit Admin")` | Menu Item | Yes | Opens edit modal |
+| Delete Admin | `[role="menuitem"]:has-text("Delete Admin")` | Menu Item | Yes | Deletes admin account |
+
+### Add / Edit Admin Modal
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Full Name * | `input[name="name"]` | Text Input | Yes | Admin Name |
+| E-mail * | `input[name="email"]` | Email Input | Yes | Login email |
+| Password | `input[name="password"]` | Password | No | Password input |
+| Confirm Password | `input[name="password_confirmation"]` | Password | No | Match check |
+| Role * | `select[name="role"], select[name="role_id"]` | Select | Yes | Role dropdown (e.g. Admin, Manager) |
+| Save Changes | `button:has-text("Save Changes")` | Button | Yes | Submit |
+| Cancel | `button:has-text("Cancel")` | Button | Yes | Close |
 
 ---
 
 ## User Flows
 
-### Flow 1: Create New Admin Account
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Admins Link"
-6. Click "Add Admin Btn"
-7. Enter New Admin Email Input: "sub_admin_qa@example.com"
-8. Enter New Admin Password Input: "SecureAdminPass123!"
-9. Enter New Admin First Name: "Sub"
-10. Enter New Admin Last Name: "Admin"
-11. Enter New Admin Phone: "966509876543"
-12. Click "Save Admin Btn"
-13. Assert "Success Toast" is visible
+### Flow 1: Verify Columns on Admin Table
+1. Login as admin (amrmuhamed9@gmail.com / 123456)
+2. Navigate to `/en/admin/admin-management`
+3. Assert page title "Admin Management" is visible
+4. Assert table columns exist: ADMIN NAME, E-MAIL, ROLE, STATUS, LAST ACTIVE, ACTIONS
 
-### Flow 2: Toggle Admin Status and Verify
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Admins Link"
-6. Click "Verify Admin Btn" on the newly created admin row
-7. Assert "Success Toast" is visible
-8. Click "Toggle Active Btn" to toggle account suspension
-9. Assert "Success Toast" is visible
+### Flow 2: Create a New Admin Account
+1. Login as admin
+2. Navigate to `/en/admin/admin-management`
+3. Click "Add Admin" button
+4. Fill Full Name, Email, Password, Confirm Password, and select a Role
+5. Click "Save Changes"
+6. Assert success toast is shown and new admin is in table
 
-### Flow 3: Create Role with Permissions
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Admins Link"
-6. Click "Roles Tab"
-7. Click "Add Role Btn"
-8. Enter Role Name Input: "QA Senior Supervisor"
-9. Check "Permission Checkbox" for the first two options
-10. Click "Save Role Btn"
-11. Assert "Success Toast" is visible
+### Flow 3: Edit Admin Profile and Role
+1. Login as admin
+2. Navigate to `/en/admin/admin-management`
+3. Click 3-dot Actions menu on an admin row
+4. Select "Edit Admin"
+5. Assert Edit modal appears
+6. Change full name or select a different role
+7. Click "Save Changes"
+8. Assert success toast and table updates
 
-### Flow 4: Delete Custom Role
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Admins Link"
-6. Click "Roles Tab"
-7. Click "First Delete Role Btn"
-8. Click "Confirm Delete Btn"
-9. Assert "Success Toast" is visible
+### Flow 4: Delete Admin Account
+1. Login as admin
+2. Navigate to `/en/admin/admin-management`
+3. Click Actions -> Delete Admin on a row
+4. Confirm delete action in dialog
+5. Assert success toast is shown and account is removed from table
 
 ---
 
 ## Validation Rules
 | Field | Rule | Error Message |
 |---|---|---|
-| New Admin Email Input | Email format | "Invalid email format" |
-| New Admin Phone | Length & numbers | "Phone number must start with 966" |
-| Role Name Input | Required | "Role name is required" |
+| Full Name * | Required | "Full name is required" |
+| E-mail * | Required, valid email | "Invalid email format" |
+| Password | Required on creation | "Password is required" |
+| Role * | Required | "Please select a role" |
 
 ---
 
 ## Edge Cases
-| ID | Scenario | Expected |
-|---|---|---|
-| EC-01 | Create Admin with short weak password | Validation warning should show |
-| EC-02 | Create Role without selecting permissions | Create role successfully or show select permission warning |
+- EC-01: Create admin with duplicate email (validation error shown)
+- EC-02: Self-delete active logged-in admin (should be blocked by UI or return error)
+- EC-03: Access without authentication (redirect to login)

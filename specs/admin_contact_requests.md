@@ -1,70 +1,88 @@
 # Page: My Coifeur — Admin Contact Requests (Support Tickets)
-**URL:** `https://dev.mycoifeur.com.sa/en/admin/login`
+**URL:** `https://dev.mycoifeur.com.sa/en/admin-login`
+**Admin Panel URL:** `https://dev.mycoifeur.com.sa/en/admin/contact-requests`
 **Type:** E2E Admin Contact Requests Flow
 **Priority:** P0
 
 ---
 
 ## Page Purpose
-End-to-End comprehensive test for the Admin Contact Requests (Support Tickets) module covering:
-- Viewing incoming contact inquiries/messages
-- Replying/Responding to a contact request
-- Resolving/Updating status of contact inquiries
+Comprehensive E2E test for the Admin Contact Requests module. Admins view, inspect, delete, and manage customer & provider support inquiries/tickets.
+
+**API Endpoints:**
+- `GET /api/v1/admin/contact_us` — list support tickets
+- `GET /api/v1/admin/contact_us/{id}/show` — show ticket detail
+- `DELETE /api/v1/admin/contact_us/{id}/delete` — delete resolved ticket
 
 ---
 
 ## UI Elements
+
+### Contact Requests Page
 | Element | Identifier Hint | Type | Required | Notes |
 |---|---|---|---|---|
-| Admin Email | `input[name="email"]` | Email Input | Yes | Admin login email |
-| Admin Password | `input[name="password"]` | Password | Yes | Admin login password |
-| Login Button | `button[type="submit"]` | Submit Button| Yes | Submits admin login |
-| Contacts Link | `a[href*="/contacts"], a[href*="/contact-requests"]` | Anchor | Yes | Sidebar contact inquiries link |
-| First Inquire Card | `(.contact-item, tr.inquiry-row)[0]` | Element | Yes | The first contact request in the list |
-| View Inquire Btn | `button[data-action="view"], .view-btn, button:has-text("View")` | Button | Yes | Opens contact details modal |
-| Reply Message Input | `textarea[name="reply_message"], textarea[placeholder*="Reply"]` | Text Area | Yes | Form input to draft support response |
-| Submit Reply Btn | `button[data-action="send-reply"], button:has-text("Send Reply")` | Button | Yes | Dispatches reply email to user |
-| Status Select | `select[name="status"], .status-dropdown` | Select | Yes | Updates ticket status (Pending, In-Progress, Resolved) |
-| Save Status Btn | `button[data-action="save-status"], button:has-text("Save Status")` | Button | Yes | Commits ticket status changes |
-| Success Toast | `.toast-success, .success-message, [role="alert"]` | Element | Yes | Confirms actions success |
+| Page Title | `h1:has-text("Contact Requests")` | Heading | Yes | Title "Contact Requests" |
+| Search Input | `input[placeholder*="Search tickets..."]` | Text Input | Yes | Filters tickets |
+| Requests Table | `table` | Table | Yes | Customer message grid |
+| Table Columns | `th` | Header | Yes | Columns: NAME, EMAIL, PHONE, SUBJECT, MESSAGE, ACTIONS |
+| Actions Menu | `button:has-text("...")` | Button | Yes | 3-dot actions dropdown |
+
+### Actions Dropdown Menu
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| View Ticket | `[role="menuitem"]:has-text("View Ticket")` | Menu Item | Yes | Opens message details modal |
+| Delete Ticket | `[role="menuitem"]:has-text("Delete Ticket")` | Menu Item | Yes | Deletes ticket |
+
+### View Ticket Details Modal
+| Element | Identifier Hint | Type | Required | Notes |
+|---|---|---|---|---|
+| Sender Name | `.sender-name, h3` | Text | Yes | Sender's Name |
+| Sender Email | `.sender-email, p` | Text | Yes | Sender's Email |
+| Message Body | `.message-body, p` | Text | Yes | Full message text |
+| Close Modal | `button:has-text("Close")` | Button | Yes | Dismiss details |
 
 ---
 
 ## User Flows
 
-### Flow 1: Reply to Support Contact Request
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Contacts Link"
-6. Click "View Inquire Btn" on the first contact request item
-7. Enter Reply Message Input: "Hello, we have received your request and our technical team is investigating."
-8. Click "Submit Reply Btn"
-9. Assert "Success Toast" is visible
+### Flow 1: List Contact Requests and Verify Columns
+1. Login as admin (amrmuhamed9@gmail.com / 123456)
+2. Navigate to `/en/admin/contact-requests`
+3. Assert page title "Contact Requests" is visible
+4. Assert table columns exist: NAME, EMAIL, PHONE, SUBJECT, MESSAGE, ACTIONS
 
-### Flow 2: Update Inquiry Status to Resolved
-1. Navigate to `https://dev.mycoifeur.com.sa/en/admin/login`
-2. Enter Admin Email: "amrmuhamed9@gmail.com"
-3. Enter Admin Password: "123456"
-4. Click "Login Button"
-5. Click "Contacts Link"
-6. Click "First Inquire Card"
-7. Select Status Select: Resolved ("resolved")
-8. Click "Save Status Btn"
-9. Assert "Success Toast" is visible
+### Flow 2: Search Tickets by Sender Name
+1. Login as admin
+2. Navigate to `/en/admin/contact-requests`
+3. Type a known sender's name in search input
+4. Assert only matching rows are displayed
+5. Clear search input and assert all rows reappear
+
+### Flow 3: View Contact Request Details via Modal
+1. Login as admin
+2. Navigate to `/en/admin/contact-requests`
+3. Click 3-dot Actions menu on a ticket row
+4. Select "View Ticket"
+5. Assert Details modal appears with full message text, sender name, and email
+6. Click "Close" to close modal
+
+### Flow 4: Delete Support Ticket
+1. Login as admin
+2. Navigate to `/en/admin/contact-requests`
+3. Click Actions -> Delete Ticket on a row
+4. Confirm delete action in dialog
+5. Assert success toast is shown and ticket is removed from list
 
 ---
 
 ## Validation Rules
 | Field | Rule | Error Message |
 |---|---|---|
-| Reply Message Input | Required | "Reply message content cannot be empty" |
+| Delete Confirmation | Required | Action must be confirmed |
 
 ---
 
 ## Edge Cases
-| ID | Scenario | Expected |
-|---|---|---|
-| EC-01 | Submit empty reply message draft | Form validation should block submit |
-| EC-02 | Modify ticket status without saving | Warning should show when navigating away, or no status change committed |
+- EC-01: Delete already resolved/deleted ticket (handled gracefully, returns 404/no crash)
+- EC-02: Search with script payload (sanitized)
+- EC-03: Access without authentication (redirect to login)

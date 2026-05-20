@@ -4,16 +4,7 @@
   "fixes": {},
   "flaky_tests": [
     "test_login_no_console_errors",
-    "test_reset_password_no_console_errors",
-    "test_smoke_page_accessible",
-    "test_flow_complete_cross_role_journey",
-    "test_smoke_homepage_loads_fb",
-    "test_smoke_no_500_error_fb",
-    "test_smoke_title_non_empty_fb",
-    "test_functional_navigates_homepage_fb",
-    "test_functional_h1_present_fb",
-    "test_validation_required_field_blocks_submit_fb",
-    "test_negative_invalid_input_does_not_crash_fb"
+    "test_reset_password_no_console_errors"
   ],
   "known_good_selectors": {},
   "selector_attempts": {}

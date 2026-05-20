@@ -50,7 +50,7 @@ def _lines(text: str) -> list[str]:
 # ── Parser ────────────────────────────────────────────────────────────────────
 
 def parse(spec_path: Path) -> ParsedSpec:
-    raw = spec_path.read_text(encoding="utf-8")
+    raw = spec_path.read_text()
     slug = spec_path.stem
     page_name = slug.replace("-", " ").title()
 

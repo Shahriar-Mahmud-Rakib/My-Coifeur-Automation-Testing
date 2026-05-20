@@ -58,9 +58,6 @@ _VIDEO_INDEX:      dict[str, str]  = {}     # nodeid → relative video path
 # Per-test runtime state
 _PRE_FAILURE_SNAP: dict[str, dict] = {}     # nodeid → {error, traceback}
 
-# ── Per-test outcome collection (for rich report generation) ─────────────
-_TEST_OUTCOMES: list[dict] = []
-
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -259,15 +256,11 @@ def _capture_evidence(request):
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
-    import time as _time
     outcome = yield
     report  = outcome.get_result()
 
     if report.when != "call":
         return
-
-    # ── Collect outcome for rich report ─────────────────────────────────────
-    _collect_test_outcome(item, report)
 
     page = item.funcargs.get("page")
     if page is None:
@@ -454,7 +447,7 @@ def pytest_collection_finish(session):
     n = len(session.items)
     print(f"[COLLECT] {n} test(s) found", flush=True)
     for item in session.items:
-        print(f"  -> {item.nodeid}", flush=True)
+        print(f"  → {item.nodeid}", flush=True)
 
 
 def pytest_internalerror(excrepr, excinfo):
@@ -533,56 +526,6 @@ def _finalise_videos() -> None:
                 pass
 
 
-def _collect_test_outcome(item, report):
-    """Record pass/fail/skip per test for rich report generation."""
-    nodeid   = item.nodeid
-    # Extract test file stem  (e.g. 'test_admin_bookings' → 'admin_bookings')
-    parts    = nodeid.split("::")
-    filepath = parts[0].replace("\\", "/")
-    fn_name  = parts[-1].split("[")[0] if "[" in parts[-1] else parts[-1]
-    params   = parts[-1].split("[", 1)[1].rstrip("]") if "[" in parts[-1] else ""
-    duration = getattr(report, "duration", 0.0)
-
-    # Extract error message for failed tests
-    err_msg = ""
-    traceback_str = ""
-    if report.failed:
-        try:
-            longrepr = str(report.longrepr or "")
-            for line in longrepr.splitlines():
-                if re.match(r"^E\s{1,3}", line):
-                    s = re.sub(r"^E\s{1,3}", "", line).strip()
-                    if s and not s.startswith(("assert ", "+ ", "where ")):
-                        err_msg = s
-                        break
-            if not err_msg:
-                err_msg = "test failed"
-            traceback_str = longrepr
-        except Exception:
-            err_msg = "test failed"
-
-    # Get docstring from function
-    docstring = ""
-    try:
-        fn = item.obj
-        if fn and fn.__doc__:
-            docstring = fn.__doc__.strip()
-    except Exception:
-        pass
-
-    _TEST_OUTCOMES.append({
-        "nodeid":    nodeid,
-        "filepath":  filepath,
-        "fn_name":   fn_name,
-        "params":    params,
-        "outcome":   report.outcome,  # "passed", "failed", "skipped"
-        "duration":  round(duration, 3),
-        "docstring": docstring,
-        "error_msg": err_msg,
-        "traceback": traceback_str[:2000],
-    })
-
-
 def pytest_sessionfinish(session, exitstatus):
     _finalise_videos()
     if _SCREENSHOT_INDEX:
@@ -597,11 +540,3 @@ def pytest_sessionfinish(session, exitstatus):
         VIDEOS_DIR.mkdir(parents=True, exist_ok=True)
         (VIDEOS_DIR / "_index.json").write_text(
             json.dumps(_VIDEO_INDEX, indent=2))
-
-    # ── Write test results JSON for rich report generator ─────────────────
-    if _TEST_OUTCOMES:
-        results_dir = _ROOT / "reports"
-        results_dir.mkdir(parents=True, exist_ok=True)
-        (results_dir / "test_results.json").write_text(
-            json.dumps(_TEST_OUTCOMES, indent=2, default=str),
-            encoding="utf-8")

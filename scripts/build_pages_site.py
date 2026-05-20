@@ -388,7 +388,7 @@ def _build_index_html(summary: dict, history: list[tuple[int, Path]]) -> str:
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mehad QA — Run #{RUN_NUMBER}</title>
+<title>My Coifeur QA — Run #{RUN_NUMBER}</title>
 <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48dGV4dCB5PSIuOWVtIiBmb250LXNpemU9IjkwIj7wn6SWPC90ZXh0Pjwvc3ZnPg=="/>
 <style>
   * {{ box-sizing:border-box }}
@@ -539,7 +539,7 @@ def _build_index_html(summary: dict, history: list[tuple[int, Path]]) -> str:
 
 <div class="hero">
   <div class="hero-inner">
-    <h1>🤖 Mehad Autonomous QA Report</h1>
+    <h1>🤖 My Coifeur Autonomous QA Report</h1>
     <div class="sub">{len(AGENT_REPORTS)} AI agents · {t or '—'} tests · auto-generated bug tickets · zero API cost</div>
     <div class="meta">
       <span><b>Run:</b> #{RUN_NUMBER}</span>
@@ -576,12 +576,6 @@ def _build_index_html(summary: dict, history: list[tuple[int, Path]]) -> str:
   {history_html}
 
   <div class="footer">
-    <div style="margin-bottom:6px">Built by Mejbaur Bahar Fagun</div>
-    <div class="contact-card">
-      <div class="name">Mejbaur Bahar Fagun</div>
-      <div class="title">Senior Software Engineer QA (IV) · Markopolo.ai</div>
-      <div class="links"><a href="https://www.linkedin.com/in/mejbaur/" target="_blank" rel="noopener">💼 LinkedIn</a></div>
-    </div>
   </div>
 
 </div>
@@ -719,7 +713,7 @@ def main() -> None:
     (SITE_DIR / "history" / "index.html").write_text(f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mehad QA — History</title>
+<title>My Coifeur QA — History</title>
 <style>
 * {{ box-sizing:border-box }}
 body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -751,12 +745,6 @@ li:hover{{background:#161b22}}
 <p><a href="../index.html">← Back to latest</a></p>
 <ul>{"".join(rows)}</ul>
 <div class="footer">
-  <div style="margin-bottom:6px">Built by Mejbaur Bahar Fagun</div>
-  <div class="contact-card">
-    <div class="name">Mejbaur Bahar Fagun</div>
-    <div class="title">Senior Software Engineer QA (IV) · Markopolo.ai</div>
-    <div class="links"><a href="https://www.linkedin.com/in/mejbaur/" target="_blank" rel="noopener">💼 LinkedIn</a></div>
-  </div>
 </div>
 </body></html>""", encoding="utf-8")
     print(f"  ✅ history/index.html with {len(history)} entries")

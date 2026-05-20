@@ -725,16 +725,6 @@ tr:hover td{{background:#1c2333}}
 
 <!-- Footer with author/contact card -->
 <div class="footer-wrap">
-  <div style="color:var(--muted);font-size:12px;margin-bottom:6px">
-    Built by Mejbaur Bahar Fagun
-  </div>
-  <div class="contact-card">
-    <div class="name">Mejbaur Bahar Fagun</div>
-    <div class="title">Senior Software Engineer QA (IV) · Markopolo.ai</div>
-    <div class="links">
-      <a href="https://www.linkedin.com/in/mejbaur/" target="_blank" rel="noopener">💼 LinkedIn</a>
-    </div>
-  </div>
 </div>
 
 </div><!-- /wrap -->
@@ -1285,7 +1275,7 @@ def _spec_detail_block(spec_name: str, result: dict, block_idx: int) -> str:
     outcomes    = _load_pytest_outcomes(json_report) if json_report else {}
 
     tests_dir  = Path("tests")
-    test_file  = tests_dir / f"{spec_name.replace('-', '_')}.py"
+    test_file  = tests_dir / f"test_{spec_name.replace('-', '_')}.py"
     test_info  = _parse_test_file(test_file) if test_file.exists() else {}
 
     # Pull pre-built passed/failed records from the consolidator if present.

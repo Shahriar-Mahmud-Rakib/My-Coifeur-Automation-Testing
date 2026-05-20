@@ -23,7 +23,7 @@
 set -e
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
-BASE_URL="${BASE_URL:-https://dev.mycoifeur.com.sa}"
+BASE_URL="${BASE_URL:-https://dev.mehadedu.com/en}"
 SLOW_MO="${SLOW_MO:-800}"          # ms between each Playwright action
 HEADED=1                           # always open browser window
 
@@ -31,7 +31,7 @@ HEADED=1                           # always open browser window
 TEAL='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'; GREEN='\033[0;32m'
 
 echo ""
-echo -e "${BOLD}${TEAL}  My Coifeur Autonomous AI Testing — Local Browser Runner${RESET}"
+echo -e "${BOLD}${TEAL}  Mehad Autonomous AI Testing — Local Browser Runner${RESET}"
 echo -e "  Target  : ${GREEN}${BASE_URL}${RESET}"
 echo -e "  Slow Mo : ${SLOW_MO}ms between actions"
 echo ""
@@ -39,22 +39,42 @@ echo ""
 # ── Test selection ────────────────────────────────────────────────────────────
 ARG="${1:-all}"
 case "$ARG" in
-  smoke)
-    FILTER="tests/test_e2e_master_journey.py -k smoke"
-    LABEL="My Coifeur Smoke Tests"
+  qa01)
+    FILTER="-k TestQA01Functional"
+    LABEL="QA-01 Functional & User Flow Tests"
     ;;
-  journey)
-    FILTER="tests/test_e2e_master_journey.py -k complete_cross_role"
-    LABEL="My Coifeur E2E Master Cross-Role Journey"
+  qa02)
+    FILTER="-k TestQA02EdgeCaseBoundary"
+    LABEL="QA-02 Edge Case & Boundary Tests"
+    ;;
+  qa03)
+    FILTER="-k TestQA03Security"
+    LABEL="QA-03 Security Tests (XSS + SQLi)"
+    ;;
+  qa04)
+    FILTER="-k TestQA04PerformanceAndJSErrors"
+    LABEL="QA-04 Performance & JS Error Tests"
+    ;;
+  qa05)
+    FILTER="-k TestQA05HallucinationDataIntegrity"
+    LABEL="QA-05 Hallucination & Data Integrity Tests"
+    ;;
+  login)
+    FILTER="tests/test_login.py"
+    LABEL="Legacy Login Tests"
+    ;;
+  reset)
+    FILTER="tests/test_reset_password.py"
+    LABEL="Legacy Reset-Password Tests"
     ;;
   fast)
     SLOW_MO=0
-    FILTER="tests/test_e2e_master_journey.py"
-    LABEL="My Coifeur E2E Tests (fast headed)"
+    FILTER="tests/test_qa_comprehensive.py"
+    LABEL="All QA Tests (fast headed)"
     ;;
   all|*)
-    FILTER="tests/test_e2e_master_journey.py"
-    LABEL="My Coifeur Complete E2E QA Test Suite"
+    FILTER="tests/test_qa_comprehensive.py"
+    LABEL="All 95 QA Comprehensive Tests"
     ;;
 esac
 
@@ -72,5 +92,4 @@ python3 -m pytest \
   --timeout-method=thread \
   --tb=short \
   -v \
-  --html=reports/report.html --self-contained-html \
   -p no:warnings

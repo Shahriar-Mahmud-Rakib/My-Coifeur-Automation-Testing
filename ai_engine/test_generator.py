@@ -1427,6 +1427,7 @@ Write all 6 test functions:""", 2500)
 # ─────────────────────────────────────────────────────────────────────────────
 # Master runner
 # ─────────────────────────────────────────────────────────────────────────────
+
 ALL_TYPES = [
     # CRITICAL (always run)
     ("smoke",          smoke),
@@ -1434,24 +1435,31 @@ ALL_TYPES = [
     ("validation",     validation),
     ("negative",       negative),
     ("edge_cases",     edge_cases),
+    # DEEP COVERAGE
     ("boundary",       boundary),
+    ("combinatorial",  combinatorial),
     ("data_driven",    data_driven),
     ("deep_form",      deep_form),
+    # SECURITY
     ("api_network",    api_network),
+    # QUALITY
     ("accessibility",  accessibility),
     ("responsive",     responsive),
     ("navigation",     navigation),
     ("session_auth",   session_auth),
+    # PERFORMANCE & RELIABILITY
     ("performance",    performance),
     ("console_errors", console_errors),
     ("error_states",   error_states),
     ("visual",         visual),
     ("cross_browser",  cross_browser),
+    # ADVANCED
     ("i18n",           i18n),
+    ("multi_language", multi_language),
     ("rate_limiting",  rate_limiting),
     ("cookie_storage", cookie_storage),
-    ("multi_language", multi_language),
 ]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DETERMINISTIC FALLBACKS — used when AI returns "" for a test type.
@@ -1468,18 +1476,18 @@ _NAV = 'wait_until="domcontentloaded", timeout=15000'
 
 def _fb_smoke(spec: ParsedSpec) -> str:
     return f'''
-def test_smoke_homepage_loads(page: Page):
+def test_smoke_homepage_loads_fb(page: Page):
     """FB smoke: page returns a response and renders <body>."""
     page.goto(BASE_URL, {_NAV})
     expect(page.locator("body")).to_be_visible(timeout=5000)
 
-def test_smoke_no_500_error(page: Page):
+def test_smoke_no_500_error_fb(page: Page):
     """FB smoke: page does not return HTTP 500 / 502 / 503."""
     resp = page.goto(BASE_URL, {_NAV})
     if resp is not None:
         assert resp.status < 500, f"server error {{resp.status}} on {{BASE_URL}}"
 
-def test_smoke_title_non_empty(page: Page):
+def test_smoke_title_non_empty_fb(page: Page):
     """FB smoke: <title> tag is present and non-empty."""
     page.goto(BASE_URL, {_NAV})
     title = page.title()
@@ -1490,12 +1498,12 @@ def test_smoke_title_non_empty(page: Page):
 def _fb_functional(spec: ParsedSpec) -> str:
     # Wait for SPA hydration before asserting on rendered content.
     return f'''
-def test_functional_navigates_homepage(page: Page):
+def test_functional_navigates_homepage_fb(page: Page):
     """FB functional: BASE_URL navigates without redirect-loop."""
     page.goto(BASE_URL, {_NAV})
     assert page.url.startswith("http"), f"non-HTTP url: {{page.url}}"
 
-def test_functional_h1_present(page: Page):
+def test_functional_h1_present_fb(page: Page):
     """FB functional: page has at least one heading element after hydration."""
     page.goto(BASE_URL, {_NAV})
     try:
@@ -1510,7 +1518,7 @@ def test_functional_h1_present(page: Page):
 
 def _fb_validation(spec: ParsedSpec) -> str:
     return f'''
-def test_validation_required_field_blocks_submit(page: Page):
+def test_validation_required_field_blocks_submit_fb(page: Page):
     """FB validation: clicking submit with empty form does not 500."""
     page.goto(BASE_URL, {_NAV})
     submit = page.locator('button[type="submit"], button:has-text("Submit"), '
@@ -1524,7 +1532,7 @@ def test_validation_required_field_blocks_submit(page: Page):
 
 def _fb_negative(spec: ParsedSpec) -> str:
     return f'''
-def test_negative_invalid_input_does_not_crash(page: Page):
+def test_negative_invalid_input_does_not_crash_fb(page: Page):
     """FB negative: filling junk into any text input does not crash the page."""
     page.goto(BASE_URL, {_NAV})
     inputs = page.locator('input[type="text"], input[type="email"]')
@@ -1539,7 +1547,7 @@ def _fb_boundary(spec: ParsedSpec) -> str:
 import pytest
 
 @pytest.mark.parametrize("length", [1, 100, 1000])
-def test_boundary_input_lengths(page: Page, length):
+def test_boundary_input_lengths_fb(page: Page, length):
     """FB boundary: text inputs accept varied lengths without crash."""
     page.goto(BASE_URL, {_NAV})
     inputs = page.locator('input[type="text"], input[type="email"]')
@@ -1559,7 +1567,7 @@ import pytest
 _FB_XSS = ["<script>alert(1)</script>", "\\"><img src=x onerror=alert(1)>"]
 
 @pytest.mark.parametrize("payload", _FB_XSS)
-def test_security_no_alert_dialog(page: Page, payload):
+def test_security_no_alert_dialog_fb(page: Page, payload):
     """FB security: XSS payload in any text input must NOT execute as JS."""
     fired = []
     page.on("dialog", lambda d: (fired.append(d.message), d.dismiss()))
@@ -1574,7 +1582,7 @@ def test_security_no_alert_dialog(page: Page, payload):
 
 def _fb_api_network(spec: ParsedSpec) -> str:
     return f'''
-def test_api_no_5xx_during_load(page: Page):
+def test_api_no_5xx_during_load_fb(page: Page):
     """FB api_network: no 5xx network response during initial page load."""
     failures = []
     page.on("response", lambda r: failures.append((r.url, r.status))
@@ -1582,7 +1590,7 @@ def test_api_no_5xx_during_load(page: Page):
     page.goto(BASE_URL, {_NAV})
     assert failures == [], f"5xx during load: {{failures[:3]}}"
 
-def test_api_https_for_credentials(page: Page):
+def test_api_https_for_credentials_fb(page: Page):
     """FB api_network: BASE_URL must use HTTPS in production."""
     if "localhost" in BASE_URL or "127.0.0.1" in BASE_URL:
         return  # local dev — HTTPS not required
@@ -1592,13 +1600,13 @@ def test_api_https_for_credentials(page: Page):
 
 def _fb_accessibility(spec: ParsedSpec) -> str:
     return f'''
-def test_a11y_html_lang_attribute(page: Page):
+def test_a11y_html_lang_attribute_fb(page: Page):
     """FB a11y: <html> must have a lang attribute (WCAG 3.1.1)."""
     page.goto(BASE_URL, {_NAV})
     lang = page.locator("html").get_attribute("lang") or ""
     assert lang.strip(), "<html> missing lang attribute"
 
-def test_a11y_inputs_have_accessible_name(page: Page):
+def test_a11y_inputs_have_accessible_name_fb(page: Page):
     """FB a11y: visible inputs should have aria-label, label, or id."""
     page.goto(BASE_URL, {_NAV})
     inputs = page.locator("input:not([type='hidden'])").all()
@@ -1614,7 +1622,7 @@ def _fb_responsive(spec: ParsedSpec) -> str:
 import pytest
 
 @pytest.mark.parametrize("w,h", [(375, 667), (768, 1024), (1280, 720)])
-def test_responsive_no_horizontal_scroll(page: Page, w, h):
+def test_responsive_no_horizontal_scroll_fb(page: Page, w, h):
     """FB responsive: no horizontal scrollbar at common breakpoints."""
     page.set_viewport_size({{"width": w, "height": h}})
     page.goto(BASE_URL, {_NAV})
@@ -1627,7 +1635,7 @@ def test_responsive_no_horizontal_scroll(page: Page, w, h):
 
 def _fb_navigation(spec: ParsedSpec) -> str:
     return f'''
-def test_navigation_back_button_works(page: Page):
+def test_navigation_back_button_works_fb(page: Page):
     """FB navigation: browser back button restores previous page."""
     page.goto(BASE_URL, {_NAV})
     start = page.url
@@ -1647,7 +1655,7 @@ def test_navigation_back_button_works(page: Page):
 
 def _fb_session_auth(spec: ParsedSpec) -> str:
     return f'''
-def test_session_unauth_view_loads(page: Page):
+def test_session_unauth_view_loads_fb(page: Page):
     """FB session: unauthenticated user can load the public homepage."""
     page.context.clear_cookies()
     page.goto(BASE_URL, {_NAV})
@@ -1659,7 +1667,7 @@ def _fb_performance(spec: ParsedSpec) -> str:
     return f'''
 import time
 
-def test_performance_load_under_10s(page: Page):
+def test_performance_load_under_10s_fb(page: Page):
     """FB performance: BASE_URL must load within 10 seconds."""
     start = time.time()
     page.goto(BASE_URL, {_NAV})
@@ -1670,7 +1678,7 @@ def test_performance_load_under_10s(page: Page):
 
 def _fb_console_errors(spec: ParsedSpec) -> str:
     return f'''
-def test_console_no_critical_js_errors(page: Page):
+def test_console_no_critical_js_errors_fb(page: Page):
     """FB console_errors: no uncaught JS exceptions on initial load."""
     errs = []
     page.on("pageerror", lambda exc: errs.append(str(exc)))
@@ -1684,7 +1692,7 @@ def test_console_no_critical_js_errors(page: Page):
 
 def _fb_error_states(spec: ParsedSpec) -> str:
     return f'''
-def test_error_state_404_page_renders(page: Page):
+def test_error_state_404_page_renders_fb(page: Page):
     """FB error_state: a clearly invalid path returns a 404 (not 500)."""
     resp = page.goto(BASE_URL.rstrip("/") + "/this-path-does-not-exist-12345",
                      {_NAV})
@@ -1698,7 +1706,7 @@ def _fb_visual(spec: ParsedSpec) -> str:
     # which can take 2-5 s on slow CI runners. Wait until either the body
     # has text OR ~6s elapses, then assert.
     return f'''
-def test_visual_body_has_visible_text(page: Page):
+def test_visual_body_has_visible_text_fb(page: Page):
     """FB visual: body element contains rendered text after SPA hydration."""
     page.goto(BASE_URL, {_NAV})
     # Wait for the SPA to render some text into the body (up to 6s)
@@ -1725,7 +1733,7 @@ def test_visual_body_has_visible_text(page: Page):
 
 def _fb_cross_browser(spec: ParsedSpec) -> str:
     return f'''
-def test_cross_browser_basic_load(page: Page):
+def test_cross_browser_basic_load_fb(page: Page):
     """FB cross_browser: page loads in current Playwright browser."""
     page.goto(BASE_URL, {_NAV})
     assert page.url.startswith("http"), f"unexpected url: {{page.url}}"
@@ -1737,7 +1745,7 @@ def _fb_data_driven(spec: ParsedSpec) -> str:
 import pytest
 
 @pytest.mark.parametrize("path", ["/", "/?utm=fb", "/#anchor"])
-def test_data_driven_url_variants_load(page: Page, path):
+def test_data_driven_url_variants_load_fb(page: Page, path):
     """FB data_driven: BASE_URL with common query/anchor variations."""
     target = BASE_URL.rstrip("/") + path
     page.goto(target, {_NAV})
@@ -1747,7 +1755,7 @@ def test_data_driven_url_variants_load(page: Page, path):
 
 def _fb_deep_form(spec: ParsedSpec) -> str:
     return f'''
-def test_deep_form_inputs_present(page: Page):
+def test_deep_form_inputs_present_fb(page: Page):
     """FB deep_form: at least one form input is rendered on the page."""
     page.goto(BASE_URL, {_NAV})
     page.wait_for_timeout(800)
@@ -1758,7 +1766,7 @@ def test_deep_form_inputs_present(page: Page):
 
 def _fb_i18n(spec: ParsedSpec) -> str:
     return f'''
-def test_i18n_meta_charset(page: Page):
+def test_i18n_meta_charset_fb(page: Page):
     """FB i18n: page declares UTF-8 character set."""
     page.goto(BASE_URL, {_NAV})
     cs = page.evaluate("() => document.characterSet || ''")
@@ -1768,7 +1776,7 @@ def test_i18n_meta_charset(page: Page):
 
 def _fb_rate_limiting(spec: ParsedSpec) -> str:
     return f'''
-def test_rate_limit_repeated_loads(page: Page):
+def test_rate_limit_repeated_loads_fb(page: Page):
     """FB rate_limit: 3 sequential page loads do not return 429 / 503."""
     for _ in range(3):
         resp = page.goto(BASE_URL, {_NAV})
@@ -1781,7 +1789,7 @@ def test_rate_limit_repeated_loads(page: Page):
 
 def _fb_cookie_storage(spec: ParsedSpec) -> str:
     return f'''
-def test_cookies_set_after_visit(page: Page):
+def test_cookies_set_after_visit_fb(page: Page):
     """FB cookie: visiting BASE_URL results in 0+ cookies (just verifies API)."""
     page.context.clear_cookies()
     page.goto(BASE_URL, {_NAV})
@@ -1878,7 +1886,7 @@ def generate_all(
     directives = _load_skip_directives(spec)
     skip_types: set[str] = set()
     if directives is not None and not directives.empty():
-        skip_types.update(t.lower() for t in directives.skip_test_types)
+        skip_types = {t.lower() for t in directives.skip_test_types}
         print(f"  [GEN] honoring spec directives — skipping types: {sorted(skip_types)}",
               flush=True)
 

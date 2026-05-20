@@ -450,7 +450,7 @@ def build_from_json_report(
     if not json_report_path or not Path(json_report_path).exists():
         return []
     try:
-        data = json.loads(Path(json_report_path).read_text(encoding="utf-8"))
+        data = json.loads(Path(json_report_path).read_text())
     except Exception:
         return []
 

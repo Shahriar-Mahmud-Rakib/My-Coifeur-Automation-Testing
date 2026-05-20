@@ -84,35 +84,11 @@ except ImportError:
     _BROWSER_USE_AVAILABLE = False
 
 # ── Real-time output ──────────────────────────────────────────────────────────
-import sys
-try:
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout.reconfigure(encoding='utf-8')
-    if sys.stderr.encoding != 'utf-8':
-        sys.stderr.reconfigure(encoding='utf-8')
-except Exception:
-    pass
-
 _real_print = builtins.print
 def print(*a, **kw):
-    kw.setdefault("flush", True)
-    try:
-        _real_print(*a, **kw)
-    except UnicodeEncodeError:
-        clean_args = []
-        for arg in a:
-            if isinstance(arg, str):
-                clean_args.append(arg.encode('ascii', 'replace').decode('ascii'))
-            else:
-                clean_args.append(arg)
-        _real_print(*clean_args, **kw)
-
+    kw.setdefault("flush", True); _real_print(*a, **kw)
 def log(msg=""):
-    try:
-        _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
-    except UnicodeEncodeError:
-        clean_msg = str(msg).encode('ascii', 'replace').decode('ascii')
-        _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {clean_msg}", flush=True)
+    _real_print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_URL         = os.getenv("BASE_URL",  "https://beta-stg.fagun.ai")
@@ -125,7 +101,7 @@ TESTS_DIR        = Path("tests")
 REPORTS_DIR      = Path("reports")
 SHOTS_DIR        = Path("reports/screenshots")
 MAX_FIX_RETRIES  = int(os.getenv("MAX_FIX_RETRIES", "3"))
-_MAX_TIMEOUTS    = 3   # blacklist a model after this many timeouts per session
+_MAX_TIMEOUTS    = 1   # blacklist a model after this many timeouts per session
 
 # Spec files to skip — these are templates/docs, not real test specs
 _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
@@ -137,13 +113,25 @@ _SKIP_SPECS = {"TEMPLATE.md", "README.md", "EXAMPLE.md"}
 # are EXCLUDED — they consistently produce malformed Python and waste a slot.
 # Smaller models get shorter timeouts so they fail fast and free the chain.
 MODEL_CHAIN = [
-    # Tier 1 — high-fidelity 7B code specialist
-    ("qwen2.5-coder:7b",      4096, 0.05, 180),
-    # Tier 2 — small fast fallback
-    ("qwen2.5-coder:1.5b",    4096, 0.05, 120),
-    # Tier 3 — fallbacks
-    ("qwen2.5-coder:3b",      3000, 0.10, 120),
-    ("deepseek-coder:1.3b",   2500, 0.10, 120),
+    # Tier 1 — large code-specialist models (best quality)
+    ("qwen2.5-coder:7b",      4096, 0.05, 120),
+    (AI_MODEL,                4096, 0.05, 120),   # whatever AI_MODEL is set to
+    ("deepseek-coder:6.7b",   4096, 0.05, 120),
+    ("codellama:7b",          3500, 0.08, 120),
+    # Tier 2 — large general models (good fallback for non-code tasks)
+    ("qwen2.5:7b",            3500, 0.08, 120),
+    ("mistral:7b",            3000, 0.08, 120),
+    ("phi4:3.8b",             3000, 0.08,  90),
+    # Tier 3 — small code models (fast + decent code quality)
+    ("qwen2.5-coder:3b",      3000, 0.10,  75),
+    ("deepseek-coder:1.3b",   2500, 0.10,  60),
+    ("qwen2.5-coder:1.5b",    2500, 0.12,  60),
+    # Tier 4 — small general models (only used if all coders unavailable)
+    ("llama3.2:3b",           3000, 0.10,  75),
+    ("phi3.5",                3000, 0.10,  75),
+    ("gemma2:2b",             2500, 0.10,  60),
+    # NOTE: removed tinyllama:1.1b, qwen2.5:0.5b, llama3.2:1b — these
+    # produce broken Python ~95% of the time, wasting model-chain slots.
 ]
 
 # Few-shot examples seed the model with the EXACT format we want.
@@ -205,9 +193,9 @@ ASSERTIONS — prefer `expect()` over raw asserts:
 - expect(locator).to_be_enabled() / .to_be_disabled()
 
 TEST DATA:
-- Emails:         os.getenv("TEST_USER", "test19@example.com")
-- Passwords:      os.getenv("TEST_PASSWORD", "Password123456")
-- Test phone:     os.getenv("TEST_PHONE", "966501234575")
+- Unique emails:  f"qa_{{int(time.time())}}@mailinator.com"
+- Passwords:      os.getenv("TEST_PASSWORD", "Test@1234!")
+- Test phone:     os.getenv("TEST_PHONE", "512345678")  # 9-digit Saudi default
 - Test OTP:       os.getenv("TEST_OTP", "123456")
 
 OTP / WHATSAPP / SMS LOGIN PAGES (when spec mentions OTP, WhatsApp, modal):
@@ -259,46 +247,20 @@ _TIMEOUT_COUNTS: dict[str, int] = {}   # per-session timeout counter per model
 def _chat_with_timeout(model: str, messages: list, options: dict,
                        timeout: int = AI_TIMEOUT,
                        fmt: str | None = None) -> dict | None:
-    """Call Ollama API directly via HTTP with a hard socket timeout.
+    """Call ollama.chat with a hard timeout. `fmt='json'` requests JSON output.
     Returns None on timeout (caller decides whether to retry/blacklist)."""
-    import urllib.request
-    import json
-    import socket
-
-    host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
-    url = f"{host}/api/chat"
-
-    if os.getenv("OLLAMA_NO_GPU") == "true":
-        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-        os.environ["GGML_VK_VISIBLE_DEVICES"] = "-1"
-    merged_options = dict(options)
-    merged_options.setdefault("num_ctx", 2048)
-
-    data = {
-        "model": model,
-        "messages": messages,
-        "options": merged_options,
-        "stream": False
-    }
+    kwargs = dict(model=model, messages=messages, options=options)
     if fmt:
-        data["format"] = fmt
-
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            return res_data
-    except Exception as e:
-        if isinstance(e, socket.timeout) or "timed out" in str(e).lower():
+        kwargs["format"] = fmt
+    with _cf.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(ollama.chat, **kwargs)
+        try:
+            return fut.result(timeout=timeout)
+        except _cf.TimeoutError:
             log(f"  [AI] ⏱  {model} timed out after {timeout}s")
             return None
-        log(f"  [AI] ❌ {model} error: {e}")
-        return None
+        except Exception as e:
+            raise e
 
 
 def ai_call(system: str, user: str, max_tokens: int = 4096,
@@ -334,8 +296,6 @@ def ai_call(system: str, user: str, max_tokens: int = 4096,
         if model in seen_models:
             continue  # don't try the same model twice if AI_MODEL == chain entry
         seen_models.add(model)
-        if os.getenv("ONLY_AI_MODEL", "false").lower() == "true" and model != AI_MODEL:
-            continue
         if model not in _AVAILABLE and model != AI_MODEL:
             continue
         effective = min(max_tokens, tok)
@@ -532,8 +492,8 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f"{i}        page.locator(\"{name_sel}\").first.fill(\"Test User\")",
             f"{i}except Exception:",
             f"{i}    pass",
-            f"{i}page.locator(\"{email_sel}\").fill(os.getenv(\"TEST_USER\", \"test19@example.com\"))",
-            f"{i}page.locator(\"{pass_sel}\").fill(os.getenv(\"TEST_PASSWORD\", \"Password123456\"))",
+            f"{i}page.locator(\"{email_sel}\").fill(f\"qa_{{int(time.time())}}@mailinator.com\")",
+            f"{i}page.locator(\"{pass_sel}\").fill(os.getenv(\"TEST_PASSWORD\", \"Test@1234!\"))",
             f"{i}try:",
             f"{i}    if page.locator(\"{confirm_sel}\").count() > 0:",
             f"{i}        page.locator(\"{confirm_sel}\").first.fill(os.getenv(\"TEST_PASSWORD\", \"Test@1234!\"))",
@@ -722,8 +682,8 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit login form with valid credentials."""',
             f'    # TEST_DATA: valid email + TEST_PASSWORD env var',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
-            f'    page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Password123456"))',
+            f'    page.locator("{email_sel}").first.fill(f"qa_{{int(time.time())}}@mailinator.com")',
+            f'    page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Test@1234!"))',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after login submit"',
@@ -735,9 +695,9 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit form with a valid email address."""',
             f'    # TEST_DATA: test email address',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
+            f'    page.locator("{email_sel}").first.fill(f"qa_{{int(time.time())}}@mailinator.com")',
             f'    if page.locator("{pass_sel}").count() > 0:',
-            f'        page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Password123456"))',
+            f'        page.locator("{pass_sel}").first.fill(os.getenv("TEST_PASSWORD", "Test@1234!"))',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after submit"',
@@ -750,7 +710,7 @@ def template_tests(spec: ParsedSpec, compiled: dict | None = None) -> str:  # no
             f'    """Submit password reset with a valid email."""',
             f'    # TEST_DATA: reset email address',
             f'    page.goto("{url}", {NAV})',
-            f'    page.locator("{email_sel}").first.fill(os.getenv("TEST_USER", "test19@example.com"))',
+            f'    page.locator("{email_sel}").first.fill("qa_reset@mailinator.com")',
             f'    page.locator("{submit_sel}").first.click()',
             f'    page.wait_for_load_state("domcontentloaded", {WT})',
             f'    assert page.url, "Page URL after reset submit"',
@@ -1657,7 +1617,7 @@ def run_tests(test_file: Path) -> dict:
     log(f"  [COLLECT] {collected} test function(s) found")
     if collected == 0:
         log("  [COLLECT] ⚠️  0 tests — file content:")
-        log(test_file.read_text(encoding="utf-8"))
+        log(test_file.read_text())
 
     log("  [PYTEST] Running tests...")
     rc, output = _stream(
@@ -1672,7 +1632,7 @@ def run_tests(test_file: Path) -> dict:
     passed = failed = total = 0
     if json_report.exists():
         try:
-            s = json.loads(json_report.read_text(encoding="utf-8")).get("summary", {})
+            s = json.loads(json_report.read_text()).get("summary", {})
             passed = s.get("passed", 0)
             failed = s.get("failed", 0) + s.get("error", 0)
             total  = s.get("total", 0)
@@ -1938,7 +1898,7 @@ class AutonomousTestAgent:
             except Exception as e:
                 log(f"  [BROWSER-USE] ⚠️  Discovery failed: {e}")
 
-        test_file = TESTS_DIR / f"{name.replace('-','_')}.py"
+        test_file = TESTS_DIR / f"test_{name.replace('-','_')}.py"
 
         # 2c. ── AI cache check ──────────────────────────────────────────
         # If we previously generated tests for THIS spec+URL combo and they
@@ -1989,7 +1949,7 @@ class AutonomousTestAgent:
                                       "passed": 0, "failed": 0, "bugs": [], "gaps": ""}
             return
         log(f"  [VALIDATE] ✅ {code.count('def test_')} tests validated")
-        test_file.write_text(code, encoding="utf-8")
+        test_file.write_text(code)
         log(f"  [SAVE]  {test_file}")
 
         # Track test data — write immediately so CI has data even if cancelled
@@ -2181,7 +2141,7 @@ class AutonomousTestAgent:
 
     def _banner(self):
         log("═"*64)
-        log("  My Coifeur Autonomous AI Test Agent  v5")
+        log("  Mehad Autonomous AI Test Agent  v5")
         log(f"  Primary model  : {AI_MODEL}")
         log(f"  Model chain    : {len(MODEL_CHAIN)} models (all free/open-source)")
         log(f"  AI timeout     : {AI_TIMEOUT}s per call")
